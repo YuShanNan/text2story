@@ -1,0 +1,21 @@
+# Python cache and virtual environments
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# Local configuration
+.env
+
+# Local working data
+output/
+input/*
+!input/example.srt
+
+# Build and archive artifacts
+*.zip
+
+# OS/editor noise
+Thumbs.db
+.DS_Store
