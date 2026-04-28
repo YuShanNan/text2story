@@ -27,6 +27,18 @@ class PromptTemplateTest(unittest.TestCase):
         with open(prompt_path, "r", encoding="utf-8") as file:
             return file.read()
 
+    def _read_runtime_default_prompt(self) -> str:
+        project_root = os.path.dirname(os.path.dirname(__file__))
+        prompt_path = os.path.join(
+            project_root,
+            "prompts",
+            "image_prompt_optimize",
+            "default.txt",
+        )
+
+        with open(prompt_path, "r", encoding="utf-8") as file:
+            return file.read()
+
     def test_image_prompt_optimize_template_uses_single_prompt_io_contract(self):
         content = self._read_target_prompt()
 
@@ -119,6 +131,44 @@ class PromptTemplateTest(unittest.TestCase):
         self.assertIn("鼻尖发红", content)
         self.assertIn("不得用眼睛发红/哭红类颜色词或鼻尖颜色词下结论", content)
         self.assertIn("输出前必须自检", content)
+
+    def test_default_named_image_prompt_optimize_template_blocks_audio_and_fake_layer_details(self):
+        content = self._read_default_named_target_prompt()
+
+        self.assertIn("必须主动降权这些细节，回到分镜原文的主体", content)
+        self.assertIn("则必须直接删改，不得因为“尽量保留原文”而继续输出", content)
+        self.assertIn("就必须重排或删掉这些信息，让人物和核心事件重新回到主体", content)
+        self.assertIn("禁止输出任何不能被镜头直接拍到的声音来源、听觉结论或传声关系", content)
+        self.assertIn("不得直接写声音本身或声音传播路径", content)
+        self.assertIn("只能改写成镜头可见的嘴部动作、手持设备、设备位置、屏幕亮起、人物停顿、视线指向等可见线索", content)
+        self.assertIn("若原始画面提示词把镜头中心偏到手机界面、按键、材质、墙面、日历、床铺等次要细节，必须纠正回人物和核心事件", content)
+        self.assertIn("禁止为了补足前景/后景关系、镜头层次或空间对照，而额外编造", content)
+        self.assertIn("物体特写、微距前景、按键/扬声器/屏幕等细部描写", content)
+        self.assertIn("不得把次要道具硬写成前景主体", content)
+        self.assertIn("不得把手机界面、拨号数字、键盘按键、扬声孔、机身磨损", content)
+        self.assertIn("禁止新增号码界面、屏幕文案、按键数字、材质磨损、边角掉漆、纹理特写等微观道具信息", content)
+        self.assertIn("前景/后景不得写成手部、肩颈、下颌线、嘴唇局部、眼部局部等身体局部", content)
+        self.assertIn("不得把人物动作镜头升级成手部特写、手机特写、产品特写、界面特写或纯道具视角", content)
+        self.assertIn("最终输出应优先写人物动作、姿态、视线和人与道具的相对位置", content)
+        self.assertIn("只能保留“人物手持/贴耳/看向该道具”的可见关系", content)
+        self.assertIn("默认优先表现人物说出、听见、确认该信息时的动作、姿态、视线与表情", content)
+        self.assertIn("不得把信息本身自动转写成界面文字、号码状态、日历页、标签文字、屏幕提示、纸面文案等额外可视化物件", content)
+        self.assertIn("而没有让手机界面、按键、屏幕文案、墙面纹理、日历、床铺等次要元素抢占镜头中心", content)
+        self.assertIn("是否误把手部、肩颈、下颌线、局部脸部或手机本体写成前景/后景/特写主体", content)
+
+    def test_runtime_default_image_prompt_optimize_template_keeps_runtime_rule_and_synced_constraints(self):
+        content = self._read_runtime_default_prompt()
+
+        self.assertIn("背对镜头、侧背对镜头、背拍、越肩且该人物面部不可见", content)
+        self.assertIn("禁止描写该人物的任何面部表情或面部细节", content)
+        self.assertIn("禁止输出任何不能被镜头直接拍到的声音来源、听觉结论或传声关系", content)
+        self.assertIn("不得把人物动作镜头升级成手部特写、手机特写、产品特写、界面特写或纯道具视角", content)
+        self.assertIn("不得把信息本身自动转写成界面文字、号码状态、日历页、标签文字、屏幕提示、纸面文案等额外可视化物件", content)
+        self.assertIn("连续性参考", content)
+        self.assertIn("Continuity reference only", content)
+        self.assertIn("跨分镜一致性", content)
+        self.assertIn("天色", content)
+        self.assertIn("光源方向", content)
 
     def _read_video_target_prompt(self) -> str:
         project_root = os.path.dirname(os.path.dirname(__file__))

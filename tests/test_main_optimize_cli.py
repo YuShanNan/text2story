@@ -10,7 +10,7 @@ from click.testing import CliRunner
 
 warnings.filterwarnings(
     "ignore",
-    message="urllib3 .* or chardet.* doesn't match a supported version!",
+    message="urllib3 .* doesn't match a supported version!",
 )
 
 import main

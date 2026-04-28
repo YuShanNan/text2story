@@ -1,3 +1,4 @@
+import re
 import time
 
 from utils.file_utils import load_prompt, read_file
@@ -25,11 +26,125 @@ def _normalize_optimized_prompt(text: str) -> str:
     return f"{normalized} {FIXED_NEGATIVE_PROMPT}"
 
 
+def _split_prompt_and_negative(text: str) -> tuple[str, str]:
+    if NEGATIVE_PROMPT_PREFIX not in text:
+        return text, ""
+    prompt_text, negative_prompt = text.split(NEGATIVE_PROMPT_PREFIX, 1)
+    return prompt_text.strip(), f"{NEGATIVE_PROMPT_PREFIX}{negative_prompt.strip()}"
+
+
+def _collapse_prompt_text(text: str) -> str:
+    collapsed = re.sub(r"[，,]{2,}", "，", text)
+    collapsed = re.sub(r"[。；;]{2,}", "。", collapsed)
+    collapsed = re.sub(r"[，,](?=[。；;])", "", collapsed)
+    collapsed = re.sub(r"^[，,。；;\s]+", "", collapsed)
+    collapsed = re.sub(r"[，,。；;\s]+$", "", collapsed)
+    return collapsed.strip()
+
+
+def _sanitize_optimized_prompt(text: str, storyboard_text: str) -> str:
+    prompt_text, negative_prompt = _split_prompt_and_negative(text)
+    if not prompt_text:
+        return text
+
+    sanitized = prompt_text
+
+    foreground_background_detail_patterns = [
+        r"(?:前景|后景)(?:是|为)?[^，。；;]*(?:手部|肩颈|下颌线|嘴唇|眼部|手机|按键|界面)[^，。；;]*[，。；;]?",
+        r"(?:前景|后景)[^，。；;]*(?:日历|床铺|墙面纹理|地板纹理)[^，。；;]*[，。；;]?",
+    ]
+    for pattern in foreground_background_detail_patterns:
+        sanitized = re.sub(pattern, "", sanitized)
+
+    disallowed_when_not_in_storyboard = {
+        "phone_interface": {
+            "storyboard_tokens": ("电话", "手机", "来电", "拨通", "拨打", "停机", "空号"),
+            "detail_tokens": ("按键", "拨号键", "拨号界面", "号码界面", "空号提示", "屏幕显示", "界面", "磨损", "掉漆"),
+            "replacement": "手持旧手机，目光看向手中旧手机",
+        },
+        "calendar_visualization": {
+            "storyboard_tokens": ("日期", "年月日", "年", "月", "日"),
+            "detail_tokens": ("日历", "翻页"),
+            "replacement": "",
+        },
+    }
+
+    replacement_insertions: list[str] = []
+    for rule in disallowed_when_not_in_storyboard.values():
+        has_context = any(token in storyboard_text for token in rule["storyboard_tokens"])
+        for detail_token in rule["detail_tokens"]:
+            if detail_token in storyboard_text:
+                continue
+            sanitized, replacements = re.subn(
+                rf"[^，。；;]*{re.escape(detail_token)}[^，。；;]*[，。；;]?",
+                "",
+                sanitized,
+            )
+            if replacements and has_context and rule["replacement"]:
+                replacement_insertions.append(rule["replacement"])
+
+    sound_detail_tokens = ("风声", "水声", "回声", "铃声", "脚步声", "布料摩擦声", "扬声器", "声音从")
+    for token in sound_detail_tokens:
+        sanitized = re.sub(
+            rf"[^，。；;]*{re.escape(token)}[^，。；;]*[，。；;]?",
+            "",
+            sanitized,
+        )
+
+    sanitized = _collapse_prompt_text(sanitized)
+
+    if replacement_insertions:
+        deduped_replacements = []
+        for replacement in replacement_insertions:
+            if replacement and replacement not in sanitized and replacement not in deduped_replacements:
+                deduped_replacements.append(replacement)
+        if deduped_replacements:
+            sanitized = _collapse_prompt_text(
+                "，".join(part for part in [sanitized, *deduped_replacements] if part)
+            )
+
+    if negative_prompt:
+        return f"{sanitized} {negative_prompt}".strip()
+    return sanitized
+
+
 def _batched(items: list, batch_size: int):
     if batch_size <= 0:
         raise ValueError("batch_size 必须大于 0")
     for index in range(0, len(items), batch_size):
         yield items[index:index + batch_size]
+
+
+def _build_optimize_user_content(
+    row: dict[str, str],
+    previous_row: dict[str, str] | None = None,
+) -> str:
+    parts = [
+        f"[分镜原文]\n{row['storyboard_text']}",
+        f"[原始画面提示词]\n{row['raw_image_prompt']}",
+    ]
+
+    if previous_row is not None:
+        parts.extend(
+            [
+                (
+                    "[Continuity reference only - previous storyboard / 连续性参考-上一条分镜]\n"
+                    f"{previous_row['storyboard_text']}"
+                ),
+                (
+                    "[Continuity reference only - previous raw image prompt / "
+                    "连续性参考-上一条原始画面提示词]\n"
+                    f"{previous_row['raw_image_prompt']}"
+                ),
+                (
+                    "[Continuity reference only - previous optimized image prompt / "
+                    "连续性参考-上一条优化后生图提示词]\n"
+                    f"{previous_row['optimized_image_prompt']}"
+                ),
+            ]
+        )
+
+    return "\n\n".join(parts)
 
 
 class PromptOptimizer:
@@ -161,14 +276,15 @@ class PromptOptimizer:
         )
 
         completed_rows = 0
+        previous_row = None
         for index, row_batch in enumerate(batches, start=1):
             batch_start = time.perf_counter()
             batch_row_total = len(row_batch)
             logger.info("  优化第 %s/%s 批... (Ctrl+C 可中断)", index, total)
             for batch_row_index, row in enumerate(row_batch, start=1):
-                user_content = (
-                    f"[分镜原文]\n{row['storyboard_text']}\n\n"
-                    f"[原始画面提示词]\n{row['raw_image_prompt']}"
+                user_content = _build_optimize_user_content(
+                    row=row,
+                    previous_row=previous_row,
                 )
                 optimized_line = self.client.chat(
                     model=self.model,
@@ -182,10 +298,14 @@ class PromptOptimizer:
                     "storyboard_text": row["storyboard_text"],
                     "raw_image_prompt": row["raw_image_prompt"],
                     "optimized_image_prompt": _normalize_optimized_prompt(
-                        optimized_line
+                        _sanitize_optimized_prompt(
+                            optimized_line,
+                            row["storyboard_text"],
+                        )
                     ),
                     "notes_cn": "",
                 }
+                previous_row = optimized_row
                 completed_rows += 1
                 batch_completed = batch_row_index == batch_row_total
                 if batch_completed:

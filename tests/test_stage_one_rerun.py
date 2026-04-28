@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 warnings.filterwarnings(
     "ignore",
-    message="urllib3 .* or chardet.* doesn't match a supported version!",
+    message="urllib3 .* doesn't match a supported version!",
 )
 
 from core.interactive import run_pipeline_for_file

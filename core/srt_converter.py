@@ -1,5 +1,5 @@
 import re
-import chardet
+import charset_normalizer
 
 from utils.logger import get_logger
 
@@ -10,7 +10,7 @@ def detect_encoding(file_path: str) -> str:
     """自动检测文件编码"""
     with open(file_path, "rb") as f:
         raw = f.read()
-    result = chardet.detect(raw)
+    result = charset_normalizer.detect(raw)
     encoding = result.get("encoding") or "utf-8"
     confidence = result.get("confidence", 0)
     logger.debug(f"检测到编码: {encoding} (置信度: {confidence:.2%})")

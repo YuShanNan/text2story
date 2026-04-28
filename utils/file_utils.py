@@ -1,5 +1,5 @@
 import os
-import chardet
+import charset_normalizer
 
 from utils.logger import get_logger
 
@@ -21,7 +21,7 @@ def read_file(path: str, encoding: str | None = None) -> str:
     if encoding is None:
         with open(path, "rb") as f:
             raw = f.read()
-        detected = chardet.detect(raw)
+        detected = charset_normalizer.detect(raw)
         encoding = detected.get("encoding") or "utf-8"
     with open(path, "r", encoding=encoding, errors="replace") as f:
         return f.read()

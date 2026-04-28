@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 warnings.filterwarnings(
     "ignore",
-    message="urllib3 .* or chardet.* doesn't match a supported version!",
+    message="urllib3 .* doesn't match a supported version!",
 )
 
 from core.interactive import (
@@ -93,13 +93,14 @@ class InteractiveMenuTest(unittest.TestCase):
 
         typed_input.return_value.execute.return_value = "2"
 
+        base_dir = os.path.join(os.sep, "tmp", "output")
         selected = select_input_file(
-            [r"E:\text2story\output\a.txt", r"E:\text2story\output\b.txt"],
-            r"E:\text2story\output",
+            [os.path.join(base_dir, "a.txt"), os.path.join(base_dir, "b.txt")],
+            base_dir,
             "测试",
         )
 
-        self.assertEqual(r"E:\text2story\output\b.txt", selected)
+        self.assertEqual(os.path.join(base_dir, "b.txt"), selected)
         clear_console.assert_called_once()
 
     def test_run_interactive_clears_console_before_rendering_welcome_screen(self):
@@ -286,7 +287,7 @@ class InteractiveMenuTest(unittest.TestCase):
 
     def test_compact_path_shortens_long_paths_on_narrow_console(self):
         console = Console(width=40, record=True)
-        path = r"E:\text2story\output\一个很长很长的目录\一个很长很长的文件名_storyboard.txt"
+        path = os.path.join(os.sep, "projects", "output", "一个很长很长的目录", "一个很长很长的文件名_storyboard.txt")
 
         compacted = _compact_path(path, console_obj=console)
 

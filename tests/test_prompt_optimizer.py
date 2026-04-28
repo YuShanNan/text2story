@@ -74,6 +74,51 @@ class MissingNegativePromptFakeClient(FakeClient):
         return "主体画面描述"
 
 
+class PhoneDetailLeakFakeClient(FakeClient):
+    def chat(
+        self,
+        model: str,
+        system_prompt: str,
+        user_content: str,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+        fallback_model: str = None,
+    ) -> str:
+        super().chat(
+            model=model,
+            system_prompt=system_prompt,
+            user_content=user_content,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            fallback_model=fallback_model,
+        )
+        return (
+            "[我]右手拇指按在手机拨号键上，左手托着手机底部，"
+            "前景是正在拨出的号码界面，后景是[我]紧绷的下颌线条。"
+        )
+
+
+class CalendarLeakFakeClient(FakeClient):
+    def chat(
+        self,
+        model: str,
+        system_prompt: str,
+        user_content: str,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+        fallback_model: str = None,
+    ) -> str:
+        super().chat(
+            model=model,
+            system_prompt=system_prompt,
+            user_content=user_content,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            fallback_model=fallback_model,
+        )
+        return "墙上挂着一本老式日历，光线落在日历翻页边缘形成细碎阴影。"
+
+
 class PromptOptimizerTest(unittest.TestCase):
     def test_optimizes_non_empty_storyboard_lines_and_outputs_txt_lines(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -212,6 +257,69 @@ class PromptOptimizerTest(unittest.TestCase):
             f"主体画面描述 {FIXED_NEGATIVE_PROMPT}",
             result,
         )
+
+    def test_sanitizes_phone_interface_and_body_part_layer_details_not_in_storyboard(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            prompts_dir = os.path.join(tmp_dir, "prompts")
+            prompt_category_dir = os.path.join(prompts_dir, "image_prompt_optimize")
+            os.makedirs(prompt_category_dir, exist_ok=True)
+
+            prompt_path = os.path.join(prompt_category_dir, "default.txt")
+            with open(prompt_path, "w", encoding="utf-8") as file:
+                file.write("你是提示词优化器")
+
+            optimizer = PromptOptimizer(
+                client=PhoneDetailLeakFakeClient(),
+                model="test-model",
+                prompts_dir=prompts_dir,
+            )
+
+            result = optimizer.optimize_rows(
+                rows=[
+                    {
+                        "scene_id": "1",
+                        "storyboard_text": "我迅速拨通了我爸的电话。",
+                        "raw_image_prompt": "原始提示词",
+                    }
+                ]
+            )
+
+        optimized = result[0]["optimized_image_prompt"]
+        self.assertNotIn("拨号键", optimized)
+        self.assertNotIn("号码界面", optimized)
+        self.assertNotIn("下颌线条", optimized)
+        self.assertIn("手持旧手机", optimized)
+
+    def test_drops_calendar_visualization_when_storyboard_only_contains_date_info(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            prompts_dir = os.path.join(tmp_dir, "prompts")
+            prompt_category_dir = os.path.join(prompts_dir, "image_prompt_optimize")
+            os.makedirs(prompt_category_dir, exist_ok=True)
+
+            prompt_path = os.path.join(prompt_category_dir, "default.txt")
+            with open(prompt_path, "w", encoding="utf-8") as file:
+                file.write("你是提示词优化器")
+
+            optimizer = PromptOptimizer(
+                client=CalendarLeakFakeClient(),
+                model="test-model",
+                prompts_dir=prompts_dir,
+            )
+
+            result = optimizer.optimize_rows(
+                rows=[
+                    {
+                        "scene_id": "1",
+                        "storyboard_text": "二零零五年八月十三日。",
+                        "raw_image_prompt": "原始提示词",
+                    }
+                ]
+            )
+
+        optimized = result[0]["optimized_image_prompt"]
+        self.assertNotIn("日历", optimized)
+        self.assertNotIn("翻页", optimized)
+        self.assertEqual(FIXED_NEGATIVE_PROMPT, optimized)
 
     def test_builds_table_rows_from_same_txt_inputs_as_txt_mode(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -473,6 +581,58 @@ class PromptOptimizerTest(unittest.TestCase):
         self.assertTrue(events[1]["batch_completed"])
         self.assertEqual(2, events[2]["batch_index"])
         self.assertGreaterEqual(events[2]["total_elapsed_seconds"], 0)
+
+    def test_optimize_rows_passes_continuity_context(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            prompts_dir = os.path.join(tmp_dir, "prompts")
+            prompt_category_dir = os.path.join(prompts_dir, "image_prompt_optimize")
+            os.makedirs(prompt_category_dir, exist_ok=True)
+
+            with open(
+                os.path.join(prompt_category_dir, "default.txt"),
+                "w",
+                encoding="utf-8",
+            ) as file:
+                file.write("你是提示词优化器")
+
+            client = FakeClient()
+            optimizer = PromptOptimizer(
+                client=client,
+                model="test-model",
+                prompts_dir=prompts_dir,
+            )
+
+            optimizer.optimize_rows(
+                rows=[
+                    {
+                        "scene_id": "1",
+                        "storyboard_text": "人物A走进房间",
+                        "raw_image_prompt": "男人进门",
+                    },
+                    {
+                        "scene_id": "2",
+                        "storyboard_text": "人物A走到窗前",
+                        "raw_image_prompt": "男人走向窗户",
+                    },
+                ],
+            )
+
+        self.assertEqual(2, len(client.calls))
+
+        uc0 = client.calls[0]["user_content"]
+        self.assertIn("人物A走进房间", uc0)
+        self.assertIn("男人进门", uc0)
+        self.assertNotIn("Continuity reference only", uc0)
+
+        uc1 = client.calls[1]["user_content"]
+        self.assertIn("人物A走到窗前", uc1)
+        self.assertIn("男人走向窗户", uc1)
+        self.assertIn("Continuity reference only - previous storyboard", uc1)
+        self.assertIn("Continuity reference only - previous raw image prompt", uc1)
+        self.assertIn("Continuity reference only - previous optimized image prompt", uc1)
+        self.assertIn("人物A走进房间", uc1)
+        self.assertIn("男人进门", uc1)
+        self.assertIn("优化后提示词1", uc1)
 
 
 if __name__ == "__main__":

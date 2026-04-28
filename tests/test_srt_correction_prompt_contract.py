@@ -126,6 +126,17 @@ class SrtCorrectionPromptContractTest(unittest.TestCase):
             "should keep correction guidance focused on concrete error types",
         )
 
+    def test_prompt_has_supplementary_context_section_for_cross_batch_continuity(self):
+        prompt = load_prompt()
+
+        self.assertIn("上一批修正摘要", prompt)
+        self.assertIn("辅助上下文", prompt)
+        self.assertIn("规则9和规则10仍然完全有效", prompt)
+        self.assertIn("不得从摘要中复制文本", prompt)
+
+        self.assertIn("不得从其他字幕块取字", prompt)
+        self.assertIn("严禁借用邻块文本", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

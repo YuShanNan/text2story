@@ -1,5 +1,6 @@
 import re
 import time
+from difflib import SequenceMatcher
 
 from api.openai_client import OpenAICompatClient
 from utils.file_utils import load_prompt
@@ -43,6 +44,56 @@ def batch_srt_blocks(blocks: list[str], max_chars: int = 3000) -> list[str]:
     return batches
 
 
+def _extract_correction_summary(input_batch: str, output_batch: str) -> str:
+    """
+    Compare input vs output SRT batches and produce a short correction diary.
+    Only reports changed text fragments — never full block text — so it does
+    not violate rules 9/10 (no borrowing of adjacent block text).
+    """
+    in_blocks = split_srt_blocks(input_batch)
+    out_blocks = split_srt_blocks(output_batch)
+
+    if len(in_blocks) != len(out_blocks):
+        return ""
+
+    corrections = []
+    for idx, (in_blk, out_blk) in enumerate(zip(in_blocks, out_blocks)):
+        in_lines = in_blk.split("\n")
+        out_lines = out_blk.split("\n")
+        if len(in_lines) < 3 or len(out_lines) < 3:
+            continue
+        in_text = " ".join(in_lines[2:])
+        out_text = " ".join(out_lines[2:])
+        if in_text == out_text:
+            continue
+
+        matcher = SequenceMatcher(None, in_text, out_text)
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == "replace":
+                before = in_text[i1:i2].strip()
+                after = out_text[j1:j2].strip()
+                if before and after and before != after:
+                    corrections.append(f"第{idx+1}条: '{before}'→'{after}'")
+            elif tag == "delete":
+                deleted = in_text[i1:i2].strip()
+                if deleted:
+                    corrections.append(f"第{idx+1}条: 删除'{deleted}'")
+            elif tag == "insert":
+                inserted = out_text[j1:j2].strip()
+                if inserted:
+                    corrections.append(f"第{idx+1}条: 插入'{inserted}'")
+
+    if not corrections:
+        return ""
+
+    MAX_ITEMS = 5
+    summary = corrections[:MAX_ITEMS]
+    remaining = len(corrections) - MAX_ITEMS
+    if remaining > 0:
+        summary.append(f"及另{remaining}处修正")
+    return "；".join(summary)
+
+
 class SrtCorrector:
     """直接修正 SRT 字幕文件，保留时间戳仅修改文案"""
 
@@ -79,16 +130,34 @@ class SrtCorrector:
         )
 
         total_start = time.perf_counter()
+        previous_correction_summary = None
         for i, batch in enumerate(batches, start=1):
             batch_start = time.perf_counter()
             logger.info(f"  修正第 {i}/{total} 批... (Ctrl+C 可中断)")
+
+            if previous_correction_summary:
+                user_content = (
+                    f"[上一批修正摘要]\n{previous_correction_summary}\n\n"
+                    f"[请继续修正以下SRT]\n{batch}"
+                )
+            else:
+                user_content = batch
+
             result = self.client.chat(
                 model=self.model,
                 system_prompt=system_prompt,
-                user_content=batch,
+                user_content=user_content,
                 temperature=0.3,
                 fallback_model=self.fallback_model,
             )
+            try:
+                previous_correction_summary = _extract_correction_summary(
+                    batch, result.strip()
+                )
+            except Exception:
+                previous_correction_summary = None
+                logger.warning("  提取修正摘要失败，下一批将不传递上下文")
+
             logger.info(f"  第 {i}/{total} 批修正完成")
             yield {
                 "content": result.strip(),
