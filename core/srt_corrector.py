@@ -154,7 +154,7 @@ class SrtCorrector:
                 previous_correction_summary = _extract_correction_summary(
                     batch, result.strip()
                 )
-            except Exception:
+            except (ValueError, IndexError):
                 previous_correction_summary = None
                 logger.warning("  提取修正摘要失败，下一批将不传递上下文")
 

@@ -2,14 +2,13 @@ import os
 import tempfile
 import unittest
 
-from core.prompt_optimizer import PromptOptimizer
-
-FIXED_NEGATIVE_PROMPT = "负面提示词：无衣物穿透、无多余人物、无杂乱元素、无面部混淆、无版权争议。"
+from core.prompt_optimizer import PromptOptimizer, FIXED_NEGATIVE_PROMPT
 
 
 class FakeClient:
-    def __init__(self):
+    def __init__(self, return_value: str | None = None):
         self.calls = []
+        self.return_value = return_value
 
     def chat(
         self,
@@ -29,94 +28,9 @@ class FakeClient:
                 "fallback_model": fallback_model,
             }
         )
+        if self.return_value is not None:
+            return self.return_value
         return f"优化后提示词{len(self.calls)}"
-
-
-class MultilineFakeClient(FakeClient):
-    def chat(
-        self,
-        model: str,
-        system_prompt: str,
-        user_content: str,
-        temperature: float = 0.7,
-        max_tokens: int = 4096,
-        fallback_model: str = None,
-    ) -> str:
-        super().chat(
-            model=model,
-            system_prompt=system_prompt,
-            user_content=user_content,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            fallback_model=fallback_model,
-        )
-        return "主体画面描述\n负面提示词：无衣物穿透、无多余人物"
-
-
-class MissingNegativePromptFakeClient(FakeClient):
-    def chat(
-        self,
-        model: str,
-        system_prompt: str,
-        user_content: str,
-        temperature: float = 0.7,
-        max_tokens: int = 4096,
-        fallback_model: str = None,
-    ) -> str:
-        super().chat(
-            model=model,
-            system_prompt=system_prompt,
-            user_content=user_content,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            fallback_model=fallback_model,
-        )
-        return "主体画面描述"
-
-
-class PhoneDetailLeakFakeClient(FakeClient):
-    def chat(
-        self,
-        model: str,
-        system_prompt: str,
-        user_content: str,
-        temperature: float = 0.7,
-        max_tokens: int = 4096,
-        fallback_model: str = None,
-    ) -> str:
-        super().chat(
-            model=model,
-            system_prompt=system_prompt,
-            user_content=user_content,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            fallback_model=fallback_model,
-        )
-        return (
-            "[我]右手拇指按在手机拨号键上，左手托着手机底部，"
-            "前景是正在拨出的号码界面，后景是[我]紧绷的下颌线条。"
-        )
-
-
-class CalendarLeakFakeClient(FakeClient):
-    def chat(
-        self,
-        model: str,
-        system_prompt: str,
-        user_content: str,
-        temperature: float = 0.7,
-        max_tokens: int = 4096,
-        fallback_model: str = None,
-    ) -> str:
-        super().chat(
-            model=model,
-            system_prompt=system_prompt,
-            user_content=user_content,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            fallback_model=fallback_model,
-        )
-        return "墙上挂着一本老式日历，光线落在日历翻页边缘形成细碎阴影。"
 
 
 class PromptOptimizerTest(unittest.TestCase):
@@ -209,7 +123,7 @@ class PromptOptimizerTest(unittest.TestCase):
                 file.write("原始提示词一\n")
 
             optimizer = PromptOptimizer(
-                client=MultilineFakeClient(),
+                client=FakeClient(return_value="主体画面描述\n负面提示词：无衣物穿透、无多余人物"),
                 model="test-model",
                 prompts_dir=prompts_dir,
             )
@@ -243,7 +157,7 @@ class PromptOptimizerTest(unittest.TestCase):
                 file.write("原始提示词一\n")
 
             optimizer = PromptOptimizer(
-                client=MissingNegativePromptFakeClient(),
+                client=FakeClient(return_value="主体画面描述"),
                 model="test-model",
                 prompts_dir=prompts_dir,
             )
@@ -269,7 +183,7 @@ class PromptOptimizerTest(unittest.TestCase):
                 file.write("你是提示词优化器")
 
             optimizer = PromptOptimizer(
-                client=PhoneDetailLeakFakeClient(),
+                client=FakeClient(return_value="[我]右手拇指按在手机拨号键上，左手托着手机底部，前景是正在拨出的号码界面，后景是[我]紧绷的下颌线条。"),
                 model="test-model",
                 prompts_dir=prompts_dir,
             )
@@ -301,7 +215,7 @@ class PromptOptimizerTest(unittest.TestCase):
                 file.write("你是提示词优化器")
 
             optimizer = PromptOptimizer(
-                client=CalendarLeakFakeClient(),
+                client=FakeClient(return_value="墙上挂着一本老式日历，光线落在日历翻页边缘形成细碎阴影。"),
                 model="test-model",
                 prompts_dir=prompts_dir,
             )

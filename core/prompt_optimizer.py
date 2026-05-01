@@ -1,5 +1,6 @@
 import re
 import time
+from collections.abc import Iterator
 
 from utils.file_utils import load_prompt, read_file
 from utils.logger import get_logger
@@ -10,6 +11,42 @@ FIXED_NEGATIVE_PROMPT = (
     "负面提示词：无衣物穿透、无多余人物、无杂乱元素、无面部混淆、无版权争议。"
 )
 logger = get_logger(__name__)
+
+# 预编译正则，避免每次调用 _sanitize_optimized_prompt 时重复编译
+_FOREGROUND_BACKGROUND_PATTERNS = (
+    re.compile(r"(?:前景|后景)(?:是|为)?[^，。；;]*(?:手部|肩颈|下颌线|嘴唇|眼部|手机|按键|界面)[^，。；;]*[，。；;]?"),
+    re.compile(r"(?:前景|后景)[^，。；;]*(?:日历|床铺|墙面纹理|地板纹理)[^，。；;]*[，。；;]?"),
+)
+
+_DISALLOWED_WHEN_NOT_IN_STORYBOARD = {
+    "phone_interface": {
+        "storyboard_tokens": ("电话", "手机", "来电", "拨通", "拨打", "停机", "空号"),
+        "detail_tokens": ("按键", "拨号键", "拨号界面", "号码界面", "空号提示", "屏幕显示", "界面", "磨损", "掉漆"),
+        "replacement": "手持旧手机，目光看向手中旧手机",
+    },
+    "calendar_visualization": {
+        "storyboard_tokens": ("日期", "年月日", "年", "月", "日"),
+        "detail_tokens": ("日历", "翻页"),
+        "replacement": "",
+    },
+}
+
+_DETAIL_REMOVAL_TPL = re.compile(r"[^，。；;]*<TOKEN>[^，。；;]*[，。；;]?")
+
+_SOUND_DETAIL_TOKENS = ("风声", "水声", "回声", "铃声", "脚步声", "布料摩擦声", "扬声器", "声音从")
+
+# 用于快速退出的关键字集合：如果 prompt 文本中不包含任何这些 token，则跳过 sanitize
+_SANITIZE_GUARD_TOKENS = frozenset(
+    ("前景", "后景", "按键", "拨号键", "界面", "日历", "翻页",
+     "风声", "水声", "回声", "铃声", "脚步声", "布料摩擦声", "扬声器", "声音从",
+     "手部", "肩颈", "下颌线", "嘴唇", "眼部", "手机",
+     "床铺", "墙面纹理", "地板纹理")
+)
+
+_COLLAPSE_RE_1 = re.compile(r"[，,]{2,}")
+_COLLAPSE_RE_2 = re.compile(r"[。；;]{2,}")
+_COLLAPSE_RE_3 = re.compile(r"[，,](?=[。；;])")
+_COLLAPSE_RE_4 = re.compile(r"^[，,。；;\s]+|[，,。；;\s]+$")
 
 
 def _read_non_empty_lines(path: str) -> list[str]:
@@ -34,11 +71,10 @@ def _split_prompt_and_negative(text: str) -> tuple[str, str]:
 
 
 def _collapse_prompt_text(text: str) -> str:
-    collapsed = re.sub(r"[，,]{2,}", "，", text)
-    collapsed = re.sub(r"[。；;]{2,}", "。", collapsed)
-    collapsed = re.sub(r"[，,](?=[。；;])", "", collapsed)
-    collapsed = re.sub(r"^[，,。；;\s]+", "", collapsed)
-    collapsed = re.sub(r"[，,。；;\s]+$", "", collapsed)
+    collapsed = _COLLAPSE_RE_1.sub("，", text)
+    collapsed = _COLLAPSE_RE_2.sub("。", collapsed)
+    collapsed = _COLLAPSE_RE_3.sub("", collapsed)
+    collapsed = _COLLAPSE_RE_4.sub("", collapsed)
     return collapsed.strip()
 
 
@@ -47,60 +83,40 @@ def _sanitize_optimized_prompt(text: str, storyboard_text: str) -> str:
     if not prompt_text:
         return text
 
+    # 快速退出：如果文本中不包含任何需要处理的关键字，直接跳过清理
+    if not any(token in prompt_text for token in _SANITIZE_GUARD_TOKENS):
+        sanitized = _collapse_prompt_text(prompt_text)
+        if negative_prompt:
+            return f"{sanitized} {negative_prompt}".strip()
+        return sanitized
+
     sanitized = prompt_text
 
-    foreground_background_detail_patterns = [
-        r"(?:前景|后景)(?:是|为)?[^，。；;]*(?:手部|肩颈|下颌线|嘴唇|眼部|手机|按键|界面)[^，。；;]*[，。；;]?",
-        r"(?:前景|后景)[^，。；;]*(?:日历|床铺|墙面纹理|地板纹理)[^，。；;]*[，。；;]?",
-    ]
-    for pattern in foreground_background_detail_patterns:
-        sanitized = re.sub(pattern, "", sanitized)
-
-    disallowed_when_not_in_storyboard = {
-        "phone_interface": {
-            "storyboard_tokens": ("电话", "手机", "来电", "拨通", "拨打", "停机", "空号"),
-            "detail_tokens": ("按键", "拨号键", "拨号界面", "号码界面", "空号提示", "屏幕显示", "界面", "磨损", "掉漆"),
-            "replacement": "手持旧手机，目光看向手中旧手机",
-        },
-        "calendar_visualization": {
-            "storyboard_tokens": ("日期", "年月日", "年", "月", "日"),
-            "detail_tokens": ("日历", "翻页"),
-            "replacement": "",
-        },
-    }
+    for pattern in _FOREGROUND_BACKGROUND_PATTERNS:
+        sanitized = pattern.sub("", sanitized)
 
     replacement_insertions: list[str] = []
-    for rule in disallowed_when_not_in_storyboard.values():
+    for rule in _DISALLOWED_WHEN_NOT_IN_STORYBOARD.values():
         has_context = any(token in storyboard_text for token in rule["storyboard_tokens"])
         for detail_token in rule["detail_tokens"]:
             if detail_token in storyboard_text:
                 continue
-            sanitized, replacements = re.subn(
-                rf"[^，。；;]*{re.escape(detail_token)}[^，。；;]*[，。；;]?",
-                "",
-                sanitized,
-            )
+            token_pattern = _DETAIL_REMOVAL_TPL.pattern.replace("<TOKEN>", re.escape(detail_token))
+            sanitized, replacements = re.subn(token_pattern, "", sanitized)
             if replacements and has_context and rule["replacement"]:
                 replacement_insertions.append(rule["replacement"])
 
-    sound_detail_tokens = ("风声", "水声", "回声", "铃声", "脚步声", "布料摩擦声", "扬声器", "声音从")
-    for token in sound_detail_tokens:
-        sanitized = re.sub(
-            rf"[^，。；;]*{re.escape(token)}[^，。；;]*[，。；;]?",
-            "",
-            sanitized,
-        )
+    for token in _SOUND_DETAIL_TOKENS:
+        token_pattern = _DETAIL_REMOVAL_TPL.pattern.replace("<TOKEN>", re.escape(token))
+        sanitized = re.sub(token_pattern, "", sanitized)
 
     sanitized = _collapse_prompt_text(sanitized)
 
     if replacement_insertions:
-        deduped_replacements = []
-        for replacement in replacement_insertions:
-            if replacement and replacement not in sanitized and replacement not in deduped_replacements:
-                deduped_replacements.append(replacement)
-        if deduped_replacements:
+        deduped = [r for r in dict.fromkeys(replacement_insertions) if r and r not in sanitized]
+        if deduped:
             sanitized = _collapse_prompt_text(
-                "，".join(part for part in [sanitized, *deduped_replacements] if part)
+                "，".join(part for part in [sanitized, *deduped] if part)
             )
 
     if negative_prompt:
@@ -108,7 +124,7 @@ def _sanitize_optimized_prompt(text: str, storyboard_text: str) -> str:
     return sanitized
 
 
-def _batched(items: list, batch_size: int):
+def _batched(items: list, batch_size: int) -> Iterator[list]:
     if batch_size <= 0:
         raise ValueError("batch_size 必须大于 0")
     for index in range(0, len(items), batch_size):
