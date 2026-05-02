@@ -1,20 +1,9 @@
 import re
-import charset_normalizer
 
+from utils.file_utils import read_file
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-
-def detect_encoding(file_path: str) -> str:
-    """自动检测文件编码"""
-    with open(file_path, "rb") as f:
-        raw = f.read()
-    result = charset_normalizer.detect(raw)
-    encoding = result.get("encoding") or "utf-8"
-    confidence = result.get("confidence", 0)
-    logger.debug(f"检测到编码: {encoding} (置信度: {confidence:.2%})")
-    return encoding
 
 
 def convert_srt_to_txt(srt_path: str) -> str:
@@ -22,9 +11,7 @@ def convert_srt_to_txt(srt_path: str) -> str:
     将 SRT 字幕文件转为纯文本。
     仅做格式转换（去除序号、时间轴、HTML 标签），不做语义处理。
     """
-    encoding = detect_encoding(srt_path)
-    with open(srt_path, "r", encoding=encoding, errors="replace") as f:
-        content = f.read()
+    content = read_file(srt_path)
 
     lines = content.strip().split("\n")
     text_lines = []
@@ -39,13 +26,10 @@ def convert_srt_to_txt(srt_path: str) -> str:
         line = line.strip()
         if not line:
             continue
-        # 跳过序号行
         if index_pattern.match(line):
             continue
-        # 跳过时间轴行
         if time_pattern.match(line):
             continue
-        # 去除 HTML 标签
         clean_line = html_pattern.sub("", line).strip()
         if clean_line:
             text_lines.append(clean_line)

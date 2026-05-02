@@ -830,11 +830,7 @@ class StoryboardGenerator:
     def generate(self, text: str, prompt_name: str = "default") -> str:
         storyboard_items = []
         for event in self.iter_generate_progress(text, prompt_name):
-            normalized_chunk = event.get("normalized_content") or normalize_storyboard_output(
-                event["source_chunk"],
-                event["content"],
-                prompt_name=prompt_name,
-            )
+            normalized_chunk = event["normalized_content"]
             storyboard_items.extend(_parse_storyboard_items(normalized_chunk))
 
         if not storyboard_items:

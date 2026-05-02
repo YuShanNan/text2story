@@ -16,6 +16,9 @@ input/*
 # Build and archive artifacts
 *.zip
 
+# Claude Code
+.claude/
+
 # OS/editor noise
 Thumbs.db
 .DS_Store

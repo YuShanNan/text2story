@@ -3,7 +3,6 @@ import sys
 
 import click
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
 
 from config import Config
@@ -24,7 +23,7 @@ from core.interactive import (
     write_csv_optimization_batches,
     write_txt_optimization_batches,
 )
-from utils.file_utils import read_file, write_file, get_stem, get_safe_stem, get_output_dir_for_file
+from utils.file_utils import read_file, write_file, get_stem, get_safe_stem, get_output_dir_for_file, shorten_middle
 from utils.table_utils import (
     merge_prompt_tables,
     merge_video_prompt_tables,
@@ -35,23 +34,13 @@ from utils.table_utils import (
 console = Console()
 
 
-def _shorten_middle(text: str, max_length: int) -> str:
-    if len(text) <= max_length:
-        return text
-    if max_length <= 10:
-        return text[:max_length]
-    head = (max_length - 3) // 2
-    tail = max_length - 3 - head
-    return f"{text[:head]}...{text[-tail:]}"
-
-
 def _format_cli_path(path: str) -> str:
     width = max(40, getattr(console, "width", 80) or 80)
     max_length = max(24, width - 18)
     basename = os.path.basename(path)
     if len(basename) <= max_length:
         return basename
-    return _shorten_middle(path, max_length)
+    return shorten_middle(path, max_length)
 
 
 def _abort_cli(message: str, title: str = "❌ 错误"):
@@ -313,7 +302,6 @@ def optimize_image_prompts(
                 get_output_dir_for_file(stem), f"{stem}_optimized_image_prompts.txt"
             )
 
-        optimized_lines = []
         write_txt_optimization_batches(
             optimizer=optimizer,
             storyboard_path=storyboard_path,

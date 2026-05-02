@@ -1,8 +1,7 @@
 import re
 import time
-from collections.abc import Iterator
 
-from utils.file_utils import load_prompt, read_file
+from utils.file_utils import load_prompt, read_file, read_non_empty_lines, batched, normalize_whitespace
 from utils.logger import get_logger
 
 DEFAULT_BATCH_SIZE = 10
@@ -31,9 +30,20 @@ _DISALLOWED_WHEN_NOT_IN_STORYBOARD = {
     },
 }
 
-_DETAIL_REMOVAL_TPL = re.compile(r"[^，。；;]*<TOKEN>[^，。；;]*[，。；;]?")
+_DETAIL_REMOVAL_TPL = r"[^，。；;]*<TOKEN>[^，。；;]*[，。；;]?"
 
 _SOUND_DETAIL_TOKENS = ("风声", "水声", "回声", "铃声", "脚步声", "布料摩擦声", "扬声器", "声音从")
+
+_PRECOMPILED_DETAIL_PATTERNS: dict[str, re.Pattern] = {}
+
+
+def _get_detail_pattern(token: str) -> re.Pattern:
+    pattern = _PRECOMPILED_DETAIL_PATTERNS.get(token)
+    if pattern is None:
+        pattern = re.compile(_DETAIL_REMOVAL_TPL.replace("<TOKEN>", re.escape(token)))
+        _PRECOMPILED_DETAIL_PATTERNS[token] = pattern
+    return pattern
+
 
 # 用于快速退出的关键字集合：如果 prompt 文本中不包含任何这些 token，则跳过 sanitize
 _SANITIZE_GUARD_TOKENS = frozenset(
@@ -49,13 +59,8 @@ _COLLAPSE_RE_3 = re.compile(r"[，,](?=[。；;])")
 _COLLAPSE_RE_4 = re.compile(r"^[，,。；;\s]+|[，,。；;\s]+$")
 
 
-def _read_non_empty_lines(path: str) -> list[str]:
-    content = read_file(path)
-    return [line.strip() for line in content.splitlines() if line.strip()]
-
-
 def _normalize_optimized_prompt(text: str) -> str:
-    normalized = " ".join(text.split())
+    normalized = normalize_whitespace(text)
     if not normalized:
         return FIXED_NEGATIVE_PROMPT
     if NEGATIVE_PROMPT_PREFIX in normalized:
@@ -101,14 +106,12 @@ def _sanitize_optimized_prompt(text: str, storyboard_text: str) -> str:
         for detail_token in rule["detail_tokens"]:
             if detail_token in storyboard_text:
                 continue
-            token_pattern = _DETAIL_REMOVAL_TPL.pattern.replace("<TOKEN>", re.escape(detail_token))
-            sanitized, replacements = re.subn(token_pattern, "", sanitized)
+            sanitized, replacements = _get_detail_pattern(detail_token).subn("", sanitized)
             if replacements and has_context and rule["replacement"]:
                 replacement_insertions.append(rule["replacement"])
 
     for token in _SOUND_DETAIL_TOKENS:
-        token_pattern = _DETAIL_REMOVAL_TPL.pattern.replace("<TOKEN>", re.escape(token))
-        sanitized = re.sub(token_pattern, "", sanitized)
+        sanitized = _get_detail_pattern(token).sub("", sanitized)
 
     sanitized = _collapse_prompt_text(sanitized)
 
@@ -122,13 +125,6 @@ def _sanitize_optimized_prompt(text: str, storyboard_text: str) -> str:
     if negative_prompt:
         return f"{sanitized} {negative_prompt}".strip()
     return sanitized
-
-
-def _batched(items: list, batch_size: int) -> Iterator[list]:
-    if batch_size <= 0:
-        raise ValueError("batch_size 必须大于 0")
-    for index in range(0, len(items), batch_size):
-        yield items[index:index + batch_size]
 
 
 def _build_optimize_user_content(row: dict[str, str]) -> str:
@@ -254,7 +250,7 @@ class PromptOptimizer:
         system_prompt = load_prompt(
             self.prompts_dir, "image_prompt_optimize", prompt_name
         )
-        batches = list(_batched(rows, batch_size))
+        batches = list(batched(rows, batch_size))
         total = len(batches)
         total_rows = len(rows)
         total_start = time.perf_counter()
@@ -320,8 +316,8 @@ class PromptOptimizer:
         storyboard_path: str,
         raw_prompt_path: str,
     ) -> list[dict[str, str]]:
-        storyboard_lines = _read_non_empty_lines(storyboard_path)
-        raw_prompt_lines = _read_non_empty_lines(raw_prompt_path)
+        storyboard_lines = read_non_empty_lines(storyboard_path)
+        raw_prompt_lines = read_non_empty_lines(raw_prompt_path)
 
         if len(storyboard_lines) != len(raw_prompt_lines):
             raise ValueError(

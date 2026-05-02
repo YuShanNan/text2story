@@ -251,7 +251,6 @@ class InteractiveMenuTest(unittest.TestCase):
     def test_runtime_facing_source_files_do_not_keep_old_provider_wording(self):
         project_root = os.path.dirname(os.path.dirname(__file__))
         target_files = [
-            os.path.join(project_root, "core", "text_corrector.py"),
             os.path.join(project_root, "core", "storyboard_generator.py"),
             os.path.join(project_root, "core", "prompt_generator.py"),
             os.path.join(project_root, "start.bat"),

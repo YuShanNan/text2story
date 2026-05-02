@@ -29,7 +29,7 @@ from core.storyboard_generator import (
 from core.prompt_generator import PromptGenerator
 from core.prompt_optimizer import PromptOptimizer
 from core.video_prompt_generator import VideoPromptGenerator
-from utils.file_utils import read_file, write_file, get_stem, get_safe_stem, get_output_dir_for_file
+from utils.file_utils import read_file, write_file, get_stem, get_safe_stem, get_output_dir_for_file, shorten_middle
 from utils.logger import suppress_console_logs
 from utils.table_utils import write_optimized_prompt_table, write_video_prompt_table
 
@@ -67,16 +67,6 @@ def _is_very_narrow_console(console_obj: Console | None = None) -> bool:
     return _console_width(console_obj) <= _VERY_NARROW_CONSOLE_WIDTH
 
 
-def _shorten_middle(text: str, max_length: int) -> str:
-    if len(text) <= max_length:
-        return text
-    if max_length <= 10:
-        return text[:max_length]
-    head = (max_length - 3) // 2
-    tail = max_length - 3 - head
-    return f"{text[:head]}...{text[-tail:]}"
-
-
 def _compact_path(path: str, base_dir: str | None = None, console_obj: Console | None = None) -> str:
     display = _safe_relpath(path, base_dir) if base_dir else path
     if not _is_narrow_console(console_obj):
@@ -86,7 +76,7 @@ def _compact_path(path: str, base_dir: str | None = None, console_obj: Console |
     basename = os.path.basename(display)
     if len(basename) <= max_length:
         return basename
-    return _shorten_middle(display, max_length)
+    return shorten_middle(display, max_length)
 
 
 def _panel_padding(console_obj: Console | None = None) -> tuple[int, int]:
@@ -721,9 +711,7 @@ def run_storyboard_generation_with_progress(
     return_diagnostics: bool = False,
 ) -> str | dict[str, object]:
     console_obj = console_obj or console
-    storyboards = []
     storyboard_items = []
-    uses_normalized_chunks = False
     degraded_warnings = []
 
     with suppress_console_logs(), _create_step_progress(console_obj) as progress:
@@ -733,18 +721,14 @@ def run_storyboard_generation_with_progress(
             if not task_initialized:
                 progress.update(task_id, total=event["chunk_total"])
                 task_initialized = True
-            if "normalized_content" in event:
-                uses_normalized_chunks = True
-                for line in event["normalized_content"].splitlines():
-                    stripped = line.strip()
-                    if not stripped:
-                        continue
-                    if stripped[0].isdigit() and ". " in stripped:
-                        storyboard_items.append(stripped.split(". ", 1)[1])
-                    else:
-                        storyboard_items.append(stripped)
-            else:
-                storyboards.append(event["content"])
+            for line in event["normalized_content"].splitlines():
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                if stripped[0].isdigit() and ". " in stripped:
+                    storyboard_items.append(stripped.split(". ", 1)[1])
+                else:
+                    storyboard_items.append(stripped)
             if event.get("degraded_fallback") and event.get("warning_message"):
                 degraded_warnings.append(event["warning_message"])
             progress.update(
@@ -755,19 +739,9 @@ def run_storyboard_generation_with_progress(
                 total_elapsed=_format_elapsed_seconds(event["total_elapsed_seconds"]),
             )
 
-    if uses_normalized_chunks:
-        result_text = "\n".join(
-            f"{index}. {item}" for index, item in enumerate(storyboard_items, start=1)
-        )
-        _print_storyboard_degradation_summary(console_obj, degraded_warnings)
-        if return_diagnostics:
-            return {
-                "text": result_text,
-                "degraded_warnings": degraded_warnings,
-            }
-        return result_text
-
-    result_text = normalize_storyboard_output(text, "\n".join(storyboards), prompt_name=prompt_name)
+    result_text = "\n".join(
+        f"{index}. {item}" for index, item in enumerate(storyboard_items, start=1)
+    )
     _print_storyboard_degradation_summary(console_obj, degraded_warnings)
     if return_diagnostics:
         return {

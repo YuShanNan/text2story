@@ -1,4 +1,6 @@
 import os
+from collections.abc import Iterator
+
 import charset_normalizer
 
 from utils.logger import get_logger
@@ -57,7 +59,6 @@ def get_safe_stem(path: str, relative_to: str = "") -> str:
     else:
         rel = os.path.basename(path)
     stem = os.path.splitext(rel)[0]
-    # 将路径分隔符替换为下划线
     stem = stem.replace(os.sep, "_").replace("/", "_")
     return stem
 
@@ -122,3 +123,29 @@ def split_text(text: str, max_chars: int = 3000) -> list[str]:
 
     logger.debug(f"文本分段: {len(chunks)} 段")
     return chunks
+
+
+def read_non_empty_lines(path: str) -> list[str]:
+    content = read_file(path)
+    return [line.strip() for line in content.splitlines() if line.strip()]
+
+
+def normalize_whitespace(text: str) -> str:
+    return " ".join(text.split())
+
+
+def batched(items: list, batch_size: int) -> Iterator[list]:
+    if batch_size <= 0:
+        raise ValueError("batch_size 必须大于 0")
+    for index in range(0, len(items), batch_size):
+        yield items[index:index + batch_size]
+
+
+def shorten_middle(text: str, max_length: int) -> str:
+    if len(text) <= max_length:
+        return text
+    if max_length <= 10:
+        return text[:max_length]
+    head = (max_length - 3) // 2
+    tail = max_length - 3 - head
+    return f"{text[:head]}...{text[-tail:]}"

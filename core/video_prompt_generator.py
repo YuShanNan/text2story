@@ -1,19 +1,14 @@
 import time
 
-from utils.file_utils import load_prompt, read_file
+from utils.file_utils import load_prompt, read_file, read_non_empty_lines, batched, normalize_whitespace
 from utils.logger import get_logger
 
 DEFAULT_BATCH_SIZE = 10
 logger = get_logger(__name__)
 
 
-def _read_non_empty_lines(path: str) -> list[str]:
-    content = read_file(path)
-    return [line.strip() for line in content.splitlines() if line.strip()]
-
-
 def _normalize_video_prompt(text: str) -> str:
-    return " ".join(text.split())
+    return normalize_whitespace(text)
 
 
 def _build_video_user_content(row: dict[str, str]) -> str:
@@ -22,13 +17,6 @@ def _build_video_user_content(row: dict[str, str]) -> str:
         f"[Current optimized image prompt / 优化后生图提示词]\n{row['optimized_image_prompt']}",
     ]
     return "\n\n".join(parts)
-
-
-def _batched(items: list, batch_size: int):
-    if batch_size <= 0:
-        raise ValueError("batch_size 必须大于 0")
-    for index in range(0, len(items), batch_size):
-        yield items[index:index + batch_size]
 
 
 class VideoPromptGenerator:
@@ -103,8 +91,8 @@ class VideoPromptGenerator:
         storyboard_path: str,
         optimized_image_prompt_path: str,
     ) -> list[dict[str, str]]:
-        storyboard_lines = _read_non_empty_lines(storyboard_path)
-        optimized_image_prompt_lines = _read_non_empty_lines(
+        storyboard_lines = read_non_empty_lines(storyboard_path)
+        optimized_image_prompt_lines = read_non_empty_lines(
             optimized_image_prompt_path
         )
 
@@ -166,7 +154,7 @@ class VideoPromptGenerator:
         system_prompt = load_prompt(
             self.prompts_dir, "video_prompt_from_image", prompt_name
         )
-        batches = list(_batched(rows, batch_size))
+        batches = list(batched(rows, batch_size))
         total = len(batches)
         total_rows = len(rows)
         total_start = time.perf_counter()
