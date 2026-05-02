@@ -12,28 +12,35 @@ class FakeVideoClient:
     def __init__(self):
         self.calls = []
 
-    def chat(
+    def chat_multi_turn(
         self,
         model: str,
-        system_prompt: str,
-        user_content: str,
+        messages: list[dict],
         temperature: float = 0.7,
         max_tokens: int = 4096,
         fallback_model: str = None,
+        thinking_enabled: bool = None,
     ) -> str:
+        system_prompt = ""
+        user_content = ""
+        if messages and messages[0]["role"] == "system":
+            system_prompt = messages[0]["content"]
+        for msg in reversed(messages):
+            if msg["role"] == "user":
+                user_content = msg["content"]
+                break
         self.calls.append(
             {
                 "model": model,
                 "system_prompt": system_prompt,
                 "user_content": user_content,
+                "messages": list(messages),
                 "temperature": temperature,
                 "fallback_model": fallback_model,
             }
         )
         return f"视频提示词{len(self.calls)}"
 
-
-class MultilineVideoClient(FakeVideoClient):
     def chat(
         self,
         model: str,
@@ -42,14 +49,38 @@ class MultilineVideoClient(FakeVideoClient):
         temperature: float = 0.7,
         max_tokens: int = 4096,
         fallback_model: str = None,
+        thinking_enabled: bool = None,
     ) -> str:
-        super().chat(
+        return self.chat_multi_turn(
             model=model,
-            system_prompt=system_prompt,
-            user_content=user_content,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
             temperature=temperature,
             max_tokens=max_tokens,
             fallback_model=fallback_model,
+            thinking_enabled=thinking_enabled,
+        )
+
+
+class MultilineVideoClient(FakeVideoClient):
+    def chat_multi_turn(
+        self,
+        model: str,
+        messages: list[dict],
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+        fallback_model: str = None,
+        thinking_enabled: bool = None,
+    ) -> str:
+        super().chat_multi_turn(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            fallback_model=fallback_model,
+            thinking_enabled=thinking_enabled,
         )
         return "视频主体描述\n镜头继续推进"
 
@@ -211,11 +242,21 @@ class VideoPromptGeneratorTest(unittest.TestCase):
             )
 
         self.assertEqual(2, len(result))
-        self.assertNotIn("Continuity reference only", client.calls[0]["user_content"])
-        self.assertIn("Continuity reference only - previous storyboard", client.calls[1]["user_content"])
-        self.assertIn("第一段分镜", client.calls[1]["user_content"])
-        self.assertIn("优化后生图提示词一", client.calls[1]["user_content"])
-        self.assertIn("视频提示词1", client.calls[1]["user_content"])
+
+        # 第一条：messages 只有 system + user (2条)
+        msgs0 = client.calls[0]["messages"]
+        self.assertEqual(2, len(msgs0))
+
+        # 第二条：messages 包含完整历史 (4条: system + user1 + assistant1 + user2)
+        msgs1 = client.calls[1]["messages"]
+        self.assertEqual(4, len(msgs1))
+        self.assertEqual("system", msgs1[0]["role"])
+        self.assertEqual("user", msgs1[1]["role"])
+        self.assertIn("第一段分镜", msgs1[1]["content"])
+        self.assertEqual("assistant", msgs1[2]["role"])
+        self.assertIn("视频提示词1", msgs1[2]["content"])
+        self.assertEqual("user", msgs1[3]["role"])
+        self.assertIn("第二段分镜", msgs1[3]["content"])
 
     def test_logs_batch_progress_in_existing_project_style(self):
         self.assertIsNotNone(VideoPromptGenerator, "VideoPromptGenerator 尚未实现")

@@ -6,7 +6,7 @@ from utils.file_utils import read_file
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
 DEFAULT_STORYBOARD_PROMPT_PATH = os.path.join(
-    PROJECT_ROOT, "prompts", "storyboard", "（默认）分镜提示词.txt"
+    PROJECT_ROOT, "prompts", "storyboard", "default.txt"
 )
 
 

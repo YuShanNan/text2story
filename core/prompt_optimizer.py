@@ -131,35 +131,11 @@ def _batched(items: list, batch_size: int) -> Iterator[list]:
         yield items[index:index + batch_size]
 
 
-def _build_optimize_user_content(
-    row: dict[str, str],
-    previous_row: dict[str, str] | None = None,
-) -> str:
+def _build_optimize_user_content(row: dict[str, str]) -> str:
     parts = [
         f"[分镜原文]\n{row['storyboard_text']}",
         f"[原始画面提示词]\n{row['raw_image_prompt']}",
     ]
-
-    if previous_row is not None:
-        parts.extend(
-            [
-                (
-                    "[Continuity reference only - previous storyboard / 连续性参考-上一条分镜]\n"
-                    f"{previous_row['storyboard_text']}"
-                ),
-                (
-                    "[Continuity reference only - previous raw image prompt / "
-                    "连续性参考-上一条原始画面提示词]\n"
-                    f"{previous_row['raw_image_prompt']}"
-                ),
-                (
-                    "[Continuity reference only - previous optimized image prompt / "
-                    "连续性参考-上一条优化后生图提示词]\n"
-                    f"{previous_row['optimized_image_prompt']}"
-                ),
-            ]
-        )
-
     return "\n\n".join(parts)
 
 
@@ -291,24 +267,22 @@ class PromptOptimizer:
             prompt_name,
         )
 
+        messages: list[dict] = [{"role": "system", "content": system_prompt}]
         completed_rows = 0
-        previous_row = None
         for index, row_batch in enumerate(batches, start=1):
             batch_start = time.perf_counter()
             batch_row_total = len(row_batch)
             logger.info("  优化第 %s/%s 批... (Ctrl+C 可中断)", index, total)
             for batch_row_index, row in enumerate(row_batch, start=1):
-                user_content = _build_optimize_user_content(
-                    row=row,
-                    previous_row=previous_row,
-                )
-                optimized_line = self.client.chat(
+                user_content = _build_optimize_user_content(row)
+                messages.append({"role": "user", "content": user_content})
+                optimized_line = self.client.chat_multi_turn(
                     model=self.model,
-                    system_prompt=system_prompt,
-                    user_content=user_content,
+                    messages=messages,
                     temperature=0.7,
                     fallback_model=self.fallback_model,
                 )
+                messages.append({"role": "assistant", "content": optimized_line})
                 optimized_row = {
                     "scene_id": row["scene_id"],
                     "storyboard_text": row["storyboard_text"],
@@ -321,7 +295,6 @@ class PromptOptimizer:
                     ),
                     "notes_cn": "",
                 }
-                previous_row = optimized_row
                 completed_rows += 1
                 batch_completed = batch_row_index == batch_row_total
                 if batch_completed:

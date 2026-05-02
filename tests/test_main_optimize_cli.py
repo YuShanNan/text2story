@@ -22,6 +22,18 @@ class FakePromptClient:
     def __init__(self):
         self.call_count = 0
 
+    def chat_multi_turn(
+        self,
+        model: str,
+        messages: list[dict],
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+        fallback_model: str = None,
+        thinking_enabled: bool = None,
+    ) -> str:
+        self.call_count += 1
+        return f"优化后提示词{self.call_count}"
+
     def chat(
         self,
         model: str,
@@ -31,14 +43,34 @@ class FakePromptClient:
         max_tokens: int = 4096,
         fallback_model: str = None,
     ) -> str:
-        self.call_count += 1
-        return f"优化后提示词{self.call_count}"
+        return self.chat_multi_turn(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            fallback_model=fallback_model,
+        )
 
 
 class FakeVideoPromptClient:
     def __init__(self):
         self.call_count = 0
 
+    def chat_multi_turn(
+        self,
+        model: str,
+        messages: list[dict],
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+        fallback_model: str = None,
+        thinking_enabled: bool = None,
+    ) -> str:
+        self.call_count += 1
+        return f"视频提示词{self.call_count}"
+
     def chat(
         self,
         model: str,
@@ -48,8 +80,16 @@ class FakeVideoPromptClient:
         max_tokens: int = 4096,
         fallback_model: str = None,
     ) -> str:
-        self.call_count += 1
-        return f"视频提示词{self.call_count}"
+        return self.chat_multi_turn(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            fallback_model=fallback_model,
+        )
 
 
 class OptimizeCliTest(unittest.TestCase):

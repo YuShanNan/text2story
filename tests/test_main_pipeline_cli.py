@@ -23,17 +23,18 @@ class StageAwareFakeClient:
         self.optimize_count = 0
         self.video_count = 0
 
-    def chat(
+    def chat_multi_turn(
         self,
         model: str,
-        system_prompt: str,
-        user_content: str,
+        messages: list[dict],
         temperature: float = 0.7,
         max_tokens: int = 4096,
         fallback_model: str = None,
+        thinking_enabled: bool = None,
     ) -> str:
+        system_prompt = messages[0]["content"] if messages else ""
         if system_prompt == "SRT":
-            return user_content
+            return messages[-1]["content"] if messages[-1]["role"] == "user" else ""
         if system_prompt == "STORYBOARD":
             return "1. 测试分镜"
         if system_prompt == "OPTIMIZE":
@@ -43,6 +44,26 @@ class StageAwareFakeClient:
             self.video_count += 1
             return f"视频结果{self.video_count}"
         raise AssertionError(f"unexpected system prompt: {system_prompt}")
+
+    def chat(
+        self,
+        model: str,
+        system_prompt: str,
+        user_content: str,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+        fallback_model: str = None,
+    ) -> str:
+        return self.chat_multi_turn(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            fallback_model=fallback_model,
+        )
 
 
 class MainPipelineCliTest(unittest.TestCase):

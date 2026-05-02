@@ -14,6 +14,7 @@ class Config:
     MAX_RETRY = int(os.getenv("MAX_RETRY", "5"))
     REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "300"))
     MAX_CHUNK_SIZE = int(os.getenv("MAX_CHUNK_SIZE", "3000"))
+    THINKING_ENABLED = os.getenv("THINKING_ENABLED", "false").lower() == "true"
 
     # 路径
     PROMPTS_DIR = "prompts"

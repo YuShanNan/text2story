@@ -12,11 +12,12 @@ class OpenAICompatClient:
     """统一的 OpenAI 兼容 API 客户端"""
 
     def __init__(self, base_url: str, api_key: str, max_retry: int = 3,
-                 timeout: int = 300):
+                 timeout: int = 300, thinking_enabled: bool = False):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.max_retry = max_retry
         self.timeout = timeout
+        self.thinking_enabled = thinking_enabled
 
     def _headers(self) -> dict:
         return {
@@ -24,9 +25,13 @@ class OpenAICompatClient:
             "Content-Type": "application/json",
         }
 
-    def _parse_sse_stream(self, response) -> str:
-        """解析 SSE 流式响应，逐块读取并拼接内容。支持 Ctrl+C 即时中断。"""
+    def _parse_sse_stream(self, response) -> tuple[str, str]:
+        """
+        解析 SSE 流式响应，逐块读取并拼接内容。支持 Ctrl+C 即时中断。
+        返回 (content, reasoning_content) 元组。
+        """
         content_parts = []
+        reasoning_parts = []
         raw_data_lines = []
 
         for line in response.iter_lines(decode_unicode=True):
@@ -50,6 +55,9 @@ class OpenAICompatClient:
                     raise RuntimeError(f"API 返回错误: {err_msg}")
 
                 delta = chunk.get("choices", [{}])[0].get("delta", {})
+                rc = delta.get("reasoning_content", "")
+                if rc:
+                    reasoning_parts.append(rc)
                 text = delta.get("content", "")
                 if text:
                     content_parts.append(text)
@@ -59,26 +67,32 @@ class OpenAICompatClient:
                 raw_data_lines.append(data_str[:200])
                 continue
 
-        result = "".join(content_parts)
+        content = "".join(content_parts)
+        reasoning = "".join(reasoning_parts)
 
-        if not result.strip() and raw_data_lines:
+        if not content.strip() and not reasoning.strip() and raw_data_lines:
             logger.debug(
                 f"SSE 流解析完毕但内容为空，"
                 f"共收到 {len(raw_data_lines)} 条未解析的 data 行，"
                 f"最后一条: {raw_data_lines[-1]}"
             )
 
-        return result
+        return content, reasoning
 
-    def chat(self, model: str, system_prompt: str, user_content: str,
-             temperature: float = 0.7, max_tokens: int = 4096,
-             fallback_model: str = None) -> str:
+    def chat_multi_turn(self, model: str, messages: list[dict],
+                        temperature: float = 0.7, max_tokens: int = 4096,
+                        fallback_model: str = None,
+                        thinking_enabled: bool = None) -> str:
         """
-        发送对话请求（流式模式）。
-        使用 SSE 流式传输，可实时接收数据并支持 Ctrl+C 即时中断。
+        多轮对话请求（流式模式）。
+        messages 为完整的角色消息列表，如 [{"role": "system", ...}, {"role": "user", ...}, ...]。
+        使用 SSE 流式传输，支持 Ctrl+C 即时中断。
         fallback_model: 备用模型，主模型全部重试失败后自动切换
-        max_retry: 单模型总尝试次数，0 表示无限重试
+        thinking_enabled: 是否启用深度思考模式（仅 DeepSeek V3.2+ 等支持）
         """
+        if thinking_enabled is None:
+            thinking_enabled = self.thinking_enabled
+
         models_to_try = [model]
         if fallback_model and fallback_model != model:
             models_to_try.append(fallback_model)
@@ -99,14 +113,14 @@ class OpenAICompatClient:
                     )
                     payload = {
                         "model": current_model,
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_content},
-                        ],
+                        "messages": messages,
                         "temperature": temperature,
                         "max_tokens": max_tokens,
                         "stream": True,
                     }
+                    if thinking_enabled:
+                        payload["thinking"] = {"type": "enabled"}
+
                     response = requests.post(
                         f"{self.base_url}/chat/completions",
                         headers=self._headers(),
@@ -117,7 +131,14 @@ class OpenAICompatClient:
                     response.raise_for_status()
                     response.encoding = "utf-8"
 
-                    content = self._parse_sse_stream(response)
+                    content, reasoning = self._parse_sse_stream(response)
+
+                    if reasoning.strip():
+                        logger.info(
+                            f"思考过程 ({current_model}): "
+                            f"{reasoning[:200]}{'...' if len(reasoning) > 200 else ''}"
+                        )
+                        logger.debug(f"完整思考过程: {reasoning}")
 
                     if not content.strip():
                         raise ValueError(
@@ -175,3 +196,19 @@ class OpenAICompatClient:
                 time.sleep(wait)
 
         raise RuntimeError(f"API 调用失败（已重试所有模型）: {last_error}")
+
+    def chat(self, model: str, system_prompt: str, user_content: str,
+             temperature: float = 0.7, max_tokens: int = 4096,
+             fallback_model: str = None, thinking_enabled: bool = None) -> str:
+        """单轮对话请求，委托给 chat_multi_turn。"""
+        return self.chat_multi_turn(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            fallback_model=fallback_model,
+            thinking_enabled=thinking_enabled,
+        )

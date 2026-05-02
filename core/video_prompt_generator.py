@@ -16,33 +16,11 @@ def _normalize_video_prompt(text: str) -> str:
     return " ".join(text.split())
 
 
-def _build_video_user_content(
-    row: dict[str, str],
-    previous_generated_row: dict[str, str] | None = None,
-) -> str:
+def _build_video_user_content(row: dict[str, str]) -> str:
     parts = [
         f"[Current storyboard / 分镜原文]\n{row['storyboard_text']}",
         f"[Current optimized image prompt / 优化后生图提示词]\n{row['optimized_image_prompt']}",
     ]
-
-    if previous_generated_row is not None:
-        parts.extend(
-            [
-                (
-                    "[Continuity reference only - previous storyboard / 连续性参考-上一条分镜]\n"
-                    f"{previous_generated_row['storyboard_text']}"
-                ),
-                (
-                    "[Continuity reference only - previous optimized image prompt / 连续性参考-上一条优化后生图提示词]\n"
-                    f"{previous_generated_row['optimized_image_prompt']}"
-                ),
-                (
-                    "[Continuity reference only - previous video prompt / 连续性参考-上一条视频提示词]\n"
-                    f"{previous_generated_row['video_prompt']}"
-                ),
-            ]
-        )
-
     return "\n\n".join(parts)
 
 
@@ -201,24 +179,22 @@ class VideoPromptGenerator:
             prompt_name,
         )
 
+        messages: list[dict] = [{"role": "system", "content": system_prompt}]
         completed_rows = 0
-        previous_generated_row = None
         for index, row_batch in enumerate(batches, start=1):
             batch_start = time.perf_counter()
             batch_row_total = len(row_batch)
             logger.info("  生成第 %s/%s 批... (Ctrl+C 可中断)", index, total)
             for batch_row_index, row in enumerate(row_batch, start=1):
-                user_content = _build_video_user_content(
-                    row=row,
-                    previous_generated_row=previous_generated_row,
-                )
-                video_prompt = self.client.chat(
+                user_content = _build_video_user_content(row)
+                messages.append({"role": "user", "content": user_content})
+                video_prompt = self.client.chat_multi_turn(
                     model=self.model,
-                    system_prompt=system_prompt,
-                    user_content=user_content,
+                    messages=messages,
                     temperature=0.7,
                     fallback_model=self.fallback_model,
                 )
+                messages.append({"role": "assistant", "content": video_prompt})
                 generated_row = {
                     "scene_id": row["scene_id"],
                     "storyboard_text": row["storyboard_text"],
@@ -226,7 +202,6 @@ class VideoPromptGenerator:
                     "video_prompt": _normalize_video_prompt(video_prompt),
                     "notes_cn": "",
                 }
-                previous_generated_row = generated_row
                 completed_rows += 1
                 batch_completed = batch_row_index == batch_row_total
                 if batch_completed:

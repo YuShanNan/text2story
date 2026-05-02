@@ -10,6 +10,37 @@ class FakeClient:
         self.calls = []
         self.return_value = return_value
 
+    def chat_multi_turn(
+        self,
+        model: str,
+        messages: list[dict],
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+        fallback_model: str = None,
+        thinking_enabled: bool = None,
+    ) -> str:
+        system_prompt = ""
+        user_content = ""
+        if messages and messages[0]["role"] == "system":
+            system_prompt = messages[0]["content"]
+        for msg in reversed(messages):
+            if msg["role"] == "user":
+                user_content = msg["content"]
+                break
+        self.calls.append(
+            {
+                "model": model,
+                "system_prompt": system_prompt,
+                "user_content": user_content,
+                "messages": list(messages),
+                "temperature": temperature,
+                "fallback_model": fallback_model,
+            }
+        )
+        if self.return_value is not None:
+            return self.return_value
+        return f"优化后提示词{len(self.calls)}"
+
     def chat(
         self,
         model: str,
@@ -18,19 +49,19 @@ class FakeClient:
         temperature: float = 0.7,
         max_tokens: int = 4096,
         fallback_model: str = None,
+        thinking_enabled: bool = None,
     ) -> str:
-        self.calls.append(
-            {
-                "model": model,
-                "system_prompt": system_prompt,
-                "user_content": user_content,
-                "temperature": temperature,
-                "fallback_model": fallback_model,
-            }
+        return self.chat_multi_turn(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            fallback_model=fallback_model,
+            thinking_enabled=thinking_enabled,
         )
-        if self.return_value is not None:
-            return self.return_value
-        return f"优化后提示词{len(self.calls)}"
 
 
 class PromptOptimizerTest(unittest.TestCase):
@@ -533,20 +564,22 @@ class PromptOptimizerTest(unittest.TestCase):
 
         self.assertEqual(2, len(client.calls))
 
-        uc0 = client.calls[0]["user_content"]
-        self.assertIn("人物A走进房间", uc0)
-        self.assertIn("男人进门", uc0)
-        self.assertNotIn("Continuity reference only", uc0)
+        # 第一条：messages 只有 system + user (2条)
+        msgs0 = client.calls[0]["messages"]
+        self.assertEqual(2, len(msgs0))
+        self.assertIn("人物A走进房间", msgs0[1]["content"])
+        self.assertIn("男人进门", msgs0[1]["content"])
 
-        uc1 = client.calls[1]["user_content"]
-        self.assertIn("人物A走到窗前", uc1)
-        self.assertIn("男人走向窗户", uc1)
-        self.assertIn("Continuity reference only - previous storyboard", uc1)
-        self.assertIn("Continuity reference only - previous raw image prompt", uc1)
-        self.assertIn("Continuity reference only - previous optimized image prompt", uc1)
-        self.assertIn("人物A走进房间", uc1)
-        self.assertIn("男人进门", uc1)
-        self.assertIn("优化后提示词1", uc1)
+        # 第二条：messages 包含完整历史 (4条: system + user1 + assistant1 + user2)
+        msgs1 = client.calls[1]["messages"]
+        self.assertEqual(4, len(msgs1))
+        self.assertEqual("system", msgs1[0]["role"])
+        self.assertEqual("user", msgs1[1]["role"])
+        self.assertIn("人物A走进房间", msgs1[1]["content"])
+        self.assertEqual("assistant", msgs1[2]["role"])
+        self.assertIn("优化后提示词1", msgs1[2]["content"])
+        self.assertEqual("user", msgs1[3]["role"])
+        self.assertIn("人物A走到窗前", msgs1[3]["content"])
 
 
 if __name__ == "__main__":

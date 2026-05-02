@@ -415,6 +415,7 @@ def generate_video_prompts(
             batch_size=batch_size,
         )
         write_file(output_path, result)
+
         console.print(f"[green]✓ 视频提示词: {output_path}[/]")
         return
 

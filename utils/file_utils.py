@@ -6,8 +6,8 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 _PROMPT_ALIASES = {
-    ("storyboard", "default"): "（默认）分镜提示词.txt",
-    ("storyboard", "默认分镜提示词"): "（默认）分镜提示词.txt",
+    ("storyboard", "default"): "default.txt",
+    ("storyboard", "默认分镜提示词"): "default.txt",
 }
 
 
