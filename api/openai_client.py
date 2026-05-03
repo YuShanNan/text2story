@@ -13,7 +13,12 @@ class OpenAICompatClient:
 
     def __init__(self, base_url: str, api_key: str, max_retry: int = 3,
                  timeout: int = 300, thinking_enabled: bool = False):
-        self.base_url = base_url.rstrip("/")
+        raw = base_url.rstrip("/")
+        # 如果已是完整端点路径（/chat/completions 或 /responses），直接用，不再追加
+        if raw.endswith("/chat/completions") or raw.endswith("/responses"):
+            self.base_url = raw
+        else:
+            self.base_url = raw + "/chat/completions"
         self.api_key = api_key
         self.max_retry = max_retry
         self.timeout = timeout
@@ -122,7 +127,7 @@ class OpenAICompatClient:
                         payload["thinking"] = {"type": "enabled"}
 
                     response = requests.post(
-                        f"{self.base_url}/chat/completions",
+                        self.base_url,
                         headers=self._headers(),
                         json=payload,
                         timeout=(30, self.timeout),
