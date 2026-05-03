@@ -12,7 +12,7 @@ from InquirerPy.separator import Separator
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import BarColumn, Progress, TextColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from rich.syntax import Syntax
 from dotenv import load_dotenv, set_key, dotenv_values
@@ -20,16 +20,16 @@ from dotenv import load_dotenv, set_key, dotenv_values
 from config import Config
 from api.client_factory import create_clients, ClientBundle
 from core.srt_converter import convert_srt_to_txt
-from core.srt_corrector import SrtCorrector
+from core.srt_corrector import SrtCorrector, batch_srt_blocks, split_srt_blocks
 from core.storyboard_generator import (
     StoryboardGenerator,
     StoryboardGenerationUnstableError,
     normalize_storyboard_output,
 )
-from core.prompt_generator import PromptGenerator
+from core.prompt_generator import PromptGenerator, parse_storyboard
 from core.prompt_optimizer import PromptOptimizer
 from core.video_prompt_generator import VideoPromptGenerator
-from utils.file_utils import read_file, write_file, get_stem, get_safe_stem, get_output_dir_for_file, shorten_middle
+from utils.file_utils import read_file, write_file, get_stem, get_safe_stem, get_output_dir_for_file, shorten_middle, read_non_empty_lines
 from utils.logger import suppress_console_logs
 from utils.table_utils import write_optimized_prompt_table, write_video_prompt_table
 
@@ -476,23 +476,24 @@ def write_txt_optimization_batches(
     console_obj = console_obj or console
     optimized_lines = []
 
+    row_total = len(read_non_empty_lines(storyboard_path))
+
     with suppress_console_logs(), _create_step_progress(console_obj) as progress:
-        task_id = _add_pending_step_task(
-            progress,
+        task_id = progress.add_task(
             "优化进度",
-            "正在请求模型...",
-            include_unit_elapsed=True,
+            total=row_total,
+            completed=0,
+            step_label="优化进度",
+            current_label=f"共 {row_total} 行，正在请求模型...",
+            total_elapsed="0.0s",
+            unit_elapsed="0.0s",
         )
-        task_initialized = False
         for event in optimizer.iter_optimized_file_progress(
             storyboard_path=storyboard_path,
             raw_prompt_path=raw_prompt_path,
             prompt_name=prompt_name,
             batch_size=batch_size,
         ):
-            if not task_initialized:
-                progress.update(task_id, total=event["row_total"])
-                task_initialized = True
             optimized_lines.append(event["optimized_line"])
             write_file(output_path, "\n".join(optimized_lines), log_saved=False)
             progress.update(
@@ -518,22 +519,23 @@ def write_csv_optimization_batches(
     console_obj = console_obj or console
     optimized_rows = []
 
+    row_total = len(rows)
+
     with suppress_console_logs(), _create_step_progress(console_obj) as progress:
-        task_id = _add_pending_step_task(
-            progress,
+        task_id = progress.add_task(
             "优化进度",
-            "正在请求模型...",
-            include_unit_elapsed=True,
+            total=row_total,
+            completed=0,
+            step_label="优化进度",
+            current_label=f"共 {row_total} 行，正在请求模型...",
+            total_elapsed="0.0s",
+            unit_elapsed="0.0s",
         )
-        task_initialized = False
         for event in optimizer.iter_optimized_row_progress(
             rows=rows,
             prompt_name=prompt_name,
             batch_size=batch_size,
         ):
-            if not task_initialized:
-                progress.update(task_id, total=event["row_total"])
-                task_initialized = True
             optimized_rows.append(event["optimized_row"])
             write_optimized_prompt_table(output_path, optimized_rows)
             progress.update(
@@ -560,23 +562,24 @@ def write_txt_video_prompt_batches(
     console_obj = console_obj or console
     video_lines = []
 
+    row_total = len(read_non_empty_lines(storyboard_path))
+
     with suppress_console_logs(), _create_step_progress(console_obj) as progress:
-        task_id = _add_pending_step_task(
-            progress,
+        task_id = progress.add_task(
             "生成进度",
-            "正在请求模型...",
-            include_unit_elapsed=True,
+            total=row_total,
+            completed=0,
+            step_label="生成进度",
+            current_label=f"共 {row_total} 行，正在请求模型...",
+            total_elapsed="0.0s",
+            unit_elapsed="0.0s",
         )
-        task_initialized = False
         for event in generator.iter_generate_file_progress(
             storyboard_path=storyboard_path,
             optimized_image_prompt_path=optimized_image_prompt_path,
             prompt_name=prompt_name,
             batch_size=batch_size,
         ):
-            if not task_initialized:
-                progress.update(task_id, total=event["row_total"])
-                task_initialized = True
             video_lines.append(event["video_line"])
             write_file(output_path, "\n".join(video_lines), log_saved=False)
             progress.update(
@@ -602,22 +605,23 @@ def write_csv_video_prompt_batches(
     console_obj = console_obj or console
     video_rows = []
 
+    row_total = len(rows)
+
     with suppress_console_logs(), _create_step_progress(console_obj) as progress:
-        task_id = _add_pending_step_task(
-            progress,
+        task_id = progress.add_task(
             "生成进度",
-            "正在请求模型...",
-            include_unit_elapsed=True,
+            total=row_total,
+            completed=0,
+            step_label="生成进度",
+            current_label=f"共 {row_total} 行，正在请求模型...",
+            total_elapsed="0.0s",
+            unit_elapsed="0.0s",
         )
-        task_initialized = False
         for event in generator.iter_generate_row_progress(
             rows=rows,
             prompt_name=prompt_name,
             batch_size=batch_size,
         ):
-            if not task_initialized:
-                progress.update(task_id, total=event["row_total"])
-                task_initialized = True
             video_rows.append(event["generated_row"])
             write_video_prompt_table(output_path, video_rows)
             progress.update(
@@ -635,6 +639,7 @@ def write_csv_video_prompt_batches(
 def _create_step_progress(console_obj: Console) -> Progress:
     if _is_very_narrow_console(console_obj):
         return Progress(
+            SpinnerColumn(),
             TextColumn("[cyan]{task.fields[step_label]}[/]"),
             TextColumn("{task.completed}/{task.total}"),
             TextColumn("[dim]{task.fields[current_label]}[/]"),
@@ -644,6 +649,7 @@ def _create_step_progress(console_obj: Console) -> Progress:
             expand=True,
         )
     return Progress(
+        SpinnerColumn(),
         TextColumn("[cyan]{task.fields[step_label]}[/]"),
         BarColumn(bar_width=None if _is_narrow_console(console_obj) else 40),
         TextColumn("{task.completed}/{task.total}"),
@@ -659,22 +665,6 @@ def _format_elapsed_seconds(seconds: float) -> str:
     return f"{seconds:.1f}s"
 
 
-def _add_pending_step_task(
-    progress: Progress,
-    description: str,
-    waiting_label: str,
-    include_unit_elapsed: bool = False,
-):
-    fields = {
-        "step_label": description,
-        "current_label": waiting_label,
-        "total_elapsed": "0.0s",
-    }
-    if include_unit_elapsed:
-        fields["unit_elapsed"] = "0.0s"
-    return progress.add_task(description, total=1, completed=0, **fields)
-
-
 def run_srt_correction_with_progress(
     corrector: SrtCorrector,
     srt_content: str,
@@ -684,19 +674,26 @@ def run_srt_correction_with_progress(
     console_obj = console_obj or console
     corrected_parts = []
 
+    blocks = split_srt_blocks(srt_content)
+    batches = batch_srt_blocks(blocks, corrector.max_chunk_size)
+    batch_total = len(batches)
+
     with suppress_console_logs(), _create_step_progress(console_obj) as progress:
-        task_id = _add_pending_step_task(progress, "SRT 修正", "正在请求模型...")
-        task_initialized = False
+        task_id = progress.add_task(
+            "SRT 修正",
+            total=batch_total,
+            completed=0,
+            step_label="SRT 修正",
+            current_label=f"共 {batch_total} 批，正在请求模型...",
+            total_elapsed="0.0s",
+        )
         for event in corrector.iter_correct_progress(srt_content, prompt_name):
-            if not task_initialized:
-                progress.update(task_id, total=event["batch_total"])
-                task_initialized = True
             corrected_parts.append(event["content"])
             progress.update(
                 task_id,
                 completed=event["batch_index"],
                 step_label="SRT 修正",
-                current_label=f"第 {event['batch_index']}/{event['batch_total']} 批",
+                current_label=f"第 {event['batch_index']}/{batch_total} 批",
                 total_elapsed=_format_elapsed_seconds(event["total_elapsed_seconds"]),
             )
 
@@ -714,13 +711,20 @@ def run_storyboard_generation_with_progress(
     storyboard_items = []
     degraded_warnings = []
 
+    from utils.file_utils import split_text
+    chunks = split_text(text, generator.max_chunk_size)
+    chunk_total = len(chunks)
+
     with suppress_console_logs(), _create_step_progress(console_obj) as progress:
-        task_id = _add_pending_step_task(progress, "分镜生成", "正在请求模型...")
-        task_initialized = False
+        task_id = progress.add_task(
+            "分镜生成",
+            total=chunk_total,
+            completed=0,
+            step_label="分镜生成",
+            current_label=f"共 {chunk_total} 段，正在请求模型...",
+            total_elapsed="0.0s",
+        )
         for event in generator.iter_generate_progress(text, prompt_name):
-            if not task_initialized:
-                progress.update(task_id, total=event["chunk_total"])
-                task_initialized = True
             for line in event["normalized_content"].splitlines():
                 stripped = line.strip()
                 if not stripped:
@@ -735,7 +739,7 @@ def run_storyboard_generation_with_progress(
                 task_id,
                 completed=event["chunk_index"],
                 step_label="分镜生成",
-                current_label=f"第 {event['chunk_index']}/{event['chunk_total']} 段",
+                current_label=f"第 {event['chunk_index']}/{chunk_total} 段",
                 total_elapsed=_format_elapsed_seconds(event["total_elapsed_seconds"]),
             )
 
@@ -762,9 +766,18 @@ def run_prompt_generation_with_progress(
     console_obj = console_obj or console
     result = {"image_prompts": [], "video_prompts": []}
 
+    scenes = parse_storyboard(storyboard_text)
+    scene_total = len(scenes)
+
     with suppress_console_logs(), _create_step_progress(console_obj) as progress:
-        task_id = _add_pending_step_task(progress, "提示词生成", "正在请求模型...")
-        task_initialized = False
+        task_id = progress.add_task(
+            "提示词生成",
+            total=scene_total,
+            completed=0,
+            step_label="提示词生成",
+            current_label=f"共 {scene_total} 个分镜，正在请求模型...",
+            total_elapsed="0.0s",
+        )
         current_stage = None
         for event in generator.iter_generate_progress(
             storyboard_text,
@@ -773,9 +786,6 @@ def run_prompt_generation_with_progress(
             video_prompt_name=video_prompt_name,
         ):
             stage_key = (event["prompt_type"], event["stage_index"])
-            if not task_initialized:
-                progress.update(task_id, total=event["scene_total"])
-                task_initialized = True
             if current_stage != stage_key:
                 progress.update(
                     task_id,

@@ -9,14 +9,46 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+_SRT_TS_RE = re.compile(
+    r"\d{2}:\d{2}:\d{2}[,、\.]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[,、\.]\d{3}"
+)
+
+
+def _is_srt_header(lines: list[str], i: int) -> bool:
+    """检查 lines[i] 是否为 SRT 块序号行（紧接着时间戳行）。"""
+    return (
+        lines[i].strip().isdigit()
+        and i + 1 < len(lines)
+        and bool(_SRT_TS_RE.search(lines[i + 1]))
+    )
+
+
+def _split_by_block_header(content: str) -> list[str]:
+    """按 SRT 块头（序号 + 时间戳）拆分无空行格式的字幕文件。"""
+    lines = content.strip().split("\n")
+    blocks: list[str] = []
+    start = None
+    for i, line in enumerate(lines):
+        if _is_srt_header(lines, i):
+            if start is not None:
+                blocks.append("\n".join(lines[start:i]))
+            start = i
+    if start is not None:
+        blocks.append("\n".join(lines[start:]))
+    return [b.strip() for b in blocks if b.strip()]
+
+
 def split_srt_blocks(srt_content: str) -> list[str]:
     """
     将 SRT 内容按字幕块分割。
-    每个字幕块包含：序号、时间轴、文案内容，以空行分隔。
-    返回字幕块列表，每个元素是一个完整的字幕块字符串。
+    优先按空行分隔；若只有一块且内容明显含多个条目，则退回到
+    按「序号 + 时间戳」头部分割，兼容无空行格式。
     """
     blocks = re.split(r"\n\s*\n", srt_content.strip())
-    return [b.strip() for b in blocks if b.strip()]
+    result = [b.strip() for b in blocks if b.strip()]
+    if len(result) == 1 and result[0].count("\n") > 5:
+        result = _split_by_block_header(result[0])
+    return result
 
 
 def batch_srt_blocks(blocks: list[str], max_chars: int = 3000) -> list[str]:
@@ -143,13 +175,30 @@ class SrtCorrector:
             else:
                 user_content = batch
 
-            result = self.client.chat(
-                model=self.model,
-                system_prompt=system_prompt,
-                user_content=user_content,
-                temperature=0.3,
-                fallback_model=self.fallback_model,
-            )
+            expected_count = len(split_srt_blocks(batch))
+            _BLOCK_RETRY = 3
+
+            for block_attempt in range(_BLOCK_RETRY + 1):
+                result = self.client.chat(
+                    model=self.model,
+                    system_prompt=system_prompt,
+                    user_content=user_content,
+                    temperature=0.3,
+                    fallback_model=self.fallback_model,
+                )
+                output_blocks = split_srt_blocks(result.strip())
+                if len(output_blocks) == expected_count:
+                    break
+                if block_attempt < _BLOCK_RETRY:
+                    logger.warning(
+                        f"  块数不匹配: 期望 {expected_count}，实际 {len(output_blocks)}，"
+                        f"重试 {block_attempt + 1}/{_BLOCK_RETRY}"
+                    )
+                else:
+                    logger.warning(
+                        f"  块数仍不匹配: 期望 {expected_count}，实际 {len(output_blocks)}，使用当前输出"
+                    )
+
             try:
                 previous_correction_summary = _extract_correction_summary(
                     batch, result.strip()
