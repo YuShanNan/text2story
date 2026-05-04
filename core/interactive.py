@@ -474,6 +474,7 @@ def write_txt_optimization_batches(
     console_obj: Console | None = None,
 ) -> str:
     console_obj = console_obj or console
+    _check_model_connectivity(optimizer.client, optimizer.model, console_obj)
     optimized_lines = []
 
     row_total = len(read_non_empty_lines(storyboard_path))
@@ -517,6 +518,7 @@ def write_csv_optimization_batches(
     console_obj: Console | None = None,
 ) -> list[dict[str, str]]:
     console_obj = console_obj or console
+    _check_model_connectivity(optimizer.client, optimizer.model, console_obj)
     optimized_rows = []
 
     row_total = len(rows)
@@ -560,6 +562,7 @@ def write_txt_video_prompt_batches(
     console_obj: Console | None = None,
 ) -> str:
     console_obj = console_obj or console
+    _check_model_connectivity(generator.client, generator.model, console_obj)
     video_lines = []
 
     row_total = len(read_non_empty_lines(storyboard_path))
@@ -603,6 +606,7 @@ def write_csv_video_prompt_batches(
     console_obj: Console | None = None,
 ) -> list[dict[str, str]]:
     console_obj = console_obj or console
+    _check_model_connectivity(generator.client, generator.model, console_obj)
     video_rows = []
 
     row_total = len(rows)
@@ -708,6 +712,7 @@ def run_srt_correction_with_progress(
     console_obj: Console | None = None,
 ) -> str:
     console_obj = console_obj or console
+    _check_model_connectivity(corrector.client, corrector.model, console_obj)
     corrected_parts = []
 
     blocks = split_srt_blocks(srt_content)
@@ -744,6 +749,7 @@ def run_storyboard_generation_with_progress(
     return_diagnostics: bool = False,
 ) -> str | dict[str, object]:
     console_obj = console_obj or console
+    _check_model_connectivity(generator.client, generator.model, console_obj)
     storyboard_items = []
     degraded_warnings = []
 
@@ -800,6 +806,7 @@ def run_prompt_generation_with_progress(
     console_obj: Console | None = None,
 ) -> dict:
     console_obj = console_obj or console
+    _check_model_connectivity(generator.client, generator.model, console_obj)
     result = {"image_prompts": [], "video_prompts": []}
 
     scenes = parse_storyboard(storyboard_text)
