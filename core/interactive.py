@@ -103,7 +103,15 @@ def _storyboard_failure_hint() -> str:
 
 
 def _print_runtime_failure(title: str, error: RuntimeError, hint: str | None = None):
-    _print_error(console, title, str(error), hint or "已返回主菜单，请修正配置、输入文件或提示词后重试。")
+    hint = hint or "请修正配置、输入文件或提示词后重试。"
+    _print_error(console, title, str(error), hint)
+    console.print("\n[dim]按 Ctrl+C 返回主菜单[/]")
+    try:
+        import time
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
 
 
 def _print_storyboard_degradation_summary(
@@ -475,7 +483,6 @@ def write_txt_optimization_batches(
 ) -> str:
     console_obj = console_obj or console
     _check_model_connectivity(optimizer.client, optimizer.model, console_obj)
-    optimized_lines = []
 
     row_total = len(read_non_empty_lines(storyboard_path))
 
@@ -484,29 +491,26 @@ def write_txt_optimization_batches(
             "优化进度",
             total=row_total,
             completed=0,
-            step_label="优化进度",
+            step_label="批量优化",
             current_label=f"共 {row_total} 行，等待模型处理...",
             total_elapsed="0.0s",
             unit_elapsed="0.0s",
         )
-        for event in optimizer.iter_optimized_file_progress(
+        result = optimizer.optimize_files_batch(
             storyboard_path=storyboard_path,
             raw_prompt_path=raw_prompt_path,
             prompt_name=prompt_name,
-            batch_size=batch_size,
-        ):
-            optimized_lines.append(event["optimized_line"])
-            write_file(output_path, "\n".join(optimized_lines), log_saved=False)
-            progress.update(
-                task_id,
-                completed=event["row_index"],
-                step_label=f"第 {event['batch_index']}/{event['batch_total']} 批",
-                current_label=f"批内 {event['batch_row_index']}/{event['batch_row_total']}",
-                unit_elapsed=_format_elapsed_seconds(event["batch_elapsed_seconds"]),
-                total_elapsed=_format_elapsed_seconds(event["total_elapsed_seconds"]),
-            )
+            rows_per_batch=batch_size,
+        )
+        progress.update(
+            task_id,
+            completed=row_total,
+            step_label="批量优化完成",
+            current_label=f"共 {row_total} 行",
+        )
 
-    return "\n".join(optimized_lines)
+    write_file(output_path, result, log_saved=False)
+    return result
 
 
 def write_csv_optimization_batches(
@@ -519,7 +523,6 @@ def write_csv_optimization_batches(
 ) -> list[dict[str, str]]:
     console_obj = console_obj or console
     _check_model_connectivity(optimizer.client, optimizer.model, console_obj)
-    optimized_rows = []
 
     row_total = len(rows)
 
@@ -528,27 +531,35 @@ def write_csv_optimization_batches(
             "优化进度",
             total=row_total,
             completed=0,
-            step_label="优化进度",
+            step_label="批量优化",
             current_label=f"共 {row_total} 行，等待模型处理...",
             total_elapsed="0.0s",
             unit_elapsed="0.0s",
         )
-        for event in optimizer.iter_optimized_row_progress(
+        result = optimizer.optimize_files_batch(
             rows=rows,
             prompt_name=prompt_name,
-            batch_size=batch_size,
-        ):
-            optimized_rows.append(event["optimized_row"])
-            write_optimized_prompt_table(output_path, optimized_rows)
-            progress.update(
-                task_id,
-                completed=event["row_index"],
-                step_label=f"第 {event['batch_index']}/{event['batch_total']} 批",
-                current_label=f"批内 {event['batch_row_index']}/{event['batch_row_total']}",
-                unit_elapsed=_format_elapsed_seconds(event["batch_elapsed_seconds"]),
-                total_elapsed=_format_elapsed_seconds(event["total_elapsed_seconds"]),
-            )
+            rows_per_batch=batch_size,
+        )
+        progress.update(
+            task_id,
+            completed=row_total,
+            step_label="批量优化完成",
+            current_label=f"共 {row_total} 行",
+        )
 
+    optimized_lines = result.strip().split("\n")
+    optimized_rows = [
+        {
+            "scene_id": rows[i]["scene_id"],
+            "storyboard_text": rows[i]["storyboard_text"],
+            "raw_image_prompt": rows[i]["raw_image_prompt"],
+            "optimized_image_prompt": line,
+            "notes_cn": "",
+        }
+        for i, line in enumerate(optimized_lines)
+    ]
+    write_optimized_prompt_table(output_path, optimized_rows)
     return optimized_rows
 
 
@@ -691,8 +702,9 @@ def _check_model_connectivity(
                 model=model,
                 system_prompt="",
                 user_content="ping",
-                max_tokens=1,
+                max_tokens=50,
                 temperature=0,
+                thinking_enabled=False,
             )
             if not result.strip():
                 raise RuntimeError("连通测试失败：模型返回空内容")
@@ -1380,6 +1392,13 @@ def run_single_step():
         _run_single_step_inner()
     except StoryboardGenerationUnstableError as e:
         _print_error(console, "❌ 分镜生成失败", str(e), _storyboard_failure_hint())
+        console.print("\n[dim]按 Ctrl+C 返回主菜单[/]")
+        try:
+            import time
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
     except RuntimeError as e:
         _print_runtime_failure("❌ 单步执行失败", e)
     except KeyboardInterrupt:

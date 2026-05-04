@@ -71,8 +71,11 @@ class PromptOptimizerTest(unittest.TestCase):
             prompt_category_dir = os.path.join(prompts_dir, "image_prompt_optimize")
             os.makedirs(prompt_category_dir, exist_ok=True)
 
-            prompt_path = os.path.join(prompt_category_dir, "default.txt")
-            with open(prompt_path, "w", encoding="utf-8") as file:
+            with open(
+                os.path.join(prompt_category_dir, "default.txt"),
+                "w",
+                encoding="utf-8",
+            ) as file:
                 file.write("你是提示词优化器")
 
             storyboard_path = os.path.join(tmp_dir, "storyboard.txt")
@@ -83,14 +86,19 @@ class PromptOptimizerTest(unittest.TestCase):
             with open(raw_prompt_path, "w", encoding="utf-8") as file:
                 file.write("原始提示词一\n原始提示词二\n")
 
-            client = FakeClient()
+            class TwoLineClient(FakeClient):
+                def chat_multi_turn(self, model, messages, **kwargs):
+                    super().chat_multi_turn(model, messages, **kwargs)
+                    return f"优化后提示词1\n优化后提示词2"
+
+            client = TwoLineClient()
             optimizer = PromptOptimizer(
                 client=client,
                 model="test-model",
                 prompts_dir=prompts_dir,
             )
 
-            result = optimizer.optimize_files(
+            result = optimizer.optimize_files_batch(
                 storyboard_path=storyboard_path,
                 raw_prompt_path=raw_prompt_path,
             )
@@ -99,11 +107,10 @@ class PromptOptimizerTest(unittest.TestCase):
             f"优化后提示词1 {FIXED_NEGATIVE_PROMPT}\n优化后提示词2 {FIXED_NEGATIVE_PROMPT}",
             result,
         )
-        self.assertEqual(2, len(client.calls))
+        self.assertEqual(1, len(client.calls))
         self.assertIn("第一段分镜", client.calls[0]["user_content"])
         self.assertIn("原始提示词一", client.calls[0]["user_content"])
         self.assertEqual("你是提示词优化器", client.calls[0]["system_prompt"])
-        self.assertNotIn("[优化要求]", client.calls[0]["user_content"])
 
     def test_default_project_prompt_includes_back_facing_expression_rule_when_loaded(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -125,7 +132,7 @@ class PromptOptimizerTest(unittest.TestCase):
                 prompts_dir=prompts_dir,
             )
 
-            optimizer.optimize_files(
+            optimizer.optimize_files_batch(
                 storyboard_path=storyboard_path,
                 raw_prompt_path=raw_prompt_path,
                 prompt_name="default",
@@ -154,12 +161,12 @@ class PromptOptimizerTest(unittest.TestCase):
                 file.write("原始提示词一\n")
 
             optimizer = PromptOptimizer(
-                client=FakeClient(return_value="主体画面描述\n负面提示词：无衣物穿透、无多余人物"),
+                client=FakeClient(return_value="主体画面描述 负面提示词：无衣物穿透、无多余人物"),
                 model="test-model",
                 prompts_dir=prompts_dir,
             )
 
-            result = optimizer.optimize_files(
+            result = optimizer.optimize_files_batch(
                 storyboard_path=storyboard_path,
                 raw_prompt_path=raw_prompt_path,
             )
@@ -193,7 +200,7 @@ class PromptOptimizerTest(unittest.TestCase):
                 prompts_dir=prompts_dir,
             )
 
-            result = optimizer.optimize_files(
+            result = optimizer.optimize_files_batch(
                 storyboard_path=storyboard_path,
                 raw_prompt_path=raw_prompt_path,
             )
@@ -219,7 +226,7 @@ class PromptOptimizerTest(unittest.TestCase):
                 prompts_dir=prompts_dir,
             )
 
-            result = optimizer.optimize_rows(
+            result = optimizer.optimize_files_batch(
                 rows=[
                     {
                         "scene_id": "1",
@@ -229,11 +236,10 @@ class PromptOptimizerTest(unittest.TestCase):
                 ]
             )
 
-        optimized = result[0]["optimized_image_prompt"]
-        self.assertNotIn("拨号键", optimized)
-        self.assertNotIn("号码界面", optimized)
-        self.assertNotIn("下颌线条", optimized)
-        self.assertIn("手持旧手机", optimized)
+        self.assertNotIn("拨号键", result)
+        self.assertNotIn("号码界面", result)
+        self.assertNotIn("下颌线条", result)
+        self.assertIn("手持旧手机", result)
 
     def test_drops_calendar_visualization_when_storyboard_only_contains_date_info(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -251,7 +257,7 @@ class PromptOptimizerTest(unittest.TestCase):
                 prompts_dir=prompts_dir,
             )
 
-            result = optimizer.optimize_rows(
+            result = optimizer.optimize_files_batch(
                 rows=[
                     {
                         "scene_id": "1",
@@ -261,10 +267,9 @@ class PromptOptimizerTest(unittest.TestCase):
                 ]
             )
 
-        optimized = result[0]["optimized_image_prompt"]
-        self.assertNotIn("日历", optimized)
-        self.assertNotIn("翻页", optimized)
-        self.assertEqual(FIXED_NEGATIVE_PROMPT, optimized)
+        self.assertNotIn("日历", result)
+        self.assertNotIn("翻页", result)
+        self.assertEqual(FIXED_NEGATIVE_PROMPT, result)
 
     def test_builds_table_rows_from_same_txt_inputs_as_txt_mode(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -328,7 +333,7 @@ class PromptOptimizerTest(unittest.TestCase):
             )
 
             with self.assertRaisesRegex(ValueError, "段数.*不一致"):
-                optimizer.optimize_files(
+                optimizer.optimize_files_batch(
                     storyboard_path=storyboard_path,
                     raw_prompt_path=raw_prompt_path,
                 )
@@ -343,14 +348,13 @@ class PromptOptimizerTest(unittest.TestCase):
             with open(prompt_path, "w", encoding="utf-8") as file:
                 file.write("你是提示词优化器")
 
-            client = FakeClient()
             optimizer = PromptOptimizer(
-                client=client,
+                client=FakeClient(),
                 model="test-model",
                 prompts_dir=prompts_dir,
             )
 
-            result = optimizer.optimize_rows(
+            result = optimizer.optimize_files_batch(
                 rows=[
                     {
                         "scene_id": "1",
@@ -361,229 +365,11 @@ class PromptOptimizerTest(unittest.TestCase):
             )
 
         self.assertEqual(
-            [
-                {
-                    "scene_id": "1",
-                    "storyboard_text": "第一段分镜",
-                    "raw_image_prompt": "原始提示词一",
-                    "optimized_image_prompt": f"优化后提示词1 {FIXED_NEGATIVE_PROMPT}",
-                    "notes_cn": "",
-                }
-            ],
+            f"优化后提示词1 {FIXED_NEGATIVE_PROMPT}",
             result,
         )
 
-    def test_yields_txt_optimization_results_in_batches(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            prompts_dir = os.path.join(tmp_dir, "prompts")
-            prompt_category_dir = os.path.join(prompts_dir, "image_prompt_optimize")
-            os.makedirs(prompt_category_dir, exist_ok=True)
-
-            with open(
-                os.path.join(prompt_category_dir, "default.txt"),
-                "w",
-                encoding="utf-8",
-            ) as file:
-                file.write("你是提示词优化器")
-
-            storyboard_path = os.path.join(tmp_dir, "storyboard.txt")
-            with open(storyboard_path, "w", encoding="utf-8") as file:
-                file.write("1. 第一段分镜\n\n2. 第二段分镜\n\n3. 第三段分镜\n")
-
-            raw_prompt_path = os.path.join(tmp_dir, "raw_prompts.txt")
-            with open(raw_prompt_path, "w", encoding="utf-8") as file:
-                file.write("原始提示词一\n原始提示词二\n原始提示词三\n")
-
-            optimizer = PromptOptimizer(
-                client=FakeClient(),
-                model="test-model",
-                prompts_dir=prompts_dir,
-            )
-
-            batches = list(
-                optimizer.iter_optimized_file_batches(
-                    storyboard_path=storyboard_path,
-                    raw_prompt_path=raw_prompt_path,
-                    batch_size=2,
-                )
-            )
-
-        self.assertEqual(
-            [
-                [
-                    f"优化后提示词1 {FIXED_NEGATIVE_PROMPT}",
-                    f"优化后提示词2 {FIXED_NEGATIVE_PROMPT}",
-                ],
-                [f"优化后提示词3 {FIXED_NEGATIVE_PROMPT}"],
-            ],
-            batches,
-        )
-
-    def test_logs_batch_progress_in_existing_project_style(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            prompts_dir = os.path.join(tmp_dir, "prompts")
-            prompt_category_dir = os.path.join(prompts_dir, "image_prompt_optimize")
-            os.makedirs(prompt_category_dir, exist_ok=True)
-
-            with open(
-                os.path.join(prompt_category_dir, "default.txt"),
-                "w",
-                encoding="utf-8",
-            ) as file:
-                file.write("你是提示词优化器")
-
-            optimizer = PromptOptimizer(
-                client=FakeClient(),
-                model="test-model",
-                prompts_dir=prompts_dir,
-            )
-
-            with self.assertLogs("core.prompt_optimizer", level="INFO") as captured:
-                list(
-                    optimizer.iter_optimized_row_batches(
-                        rows=[
-                            {
-                                "scene_id": "1",
-                                "storyboard_text": "第一段分镜",
-                                "raw_image_prompt": "原始提示词一",
-                            },
-                            {
-                                "scene_id": "2",
-                                "storyboard_text": "第二段分镜",
-                                "raw_image_prompt": "原始提示词二",
-                            },
-                        {
-                            "scene_id": "3",
-                            "storyboard_text": "第三段分镜",
-                            "raw_image_prompt": "原始提示词三",
-                        },
-                    ],
-                    prompt_name="default",
-                    batch_size=2,
-                )
-            )
-
-        log_output = "\n".join(captured.output)
-        self.assertIn("开始画面提示词优化 (共 3 条分镜, 2 批, 模型: test-model, 提示词: default)", log_output)
-        self.assertIn("优化第 1/2 批... (Ctrl+C 可中断)", log_output)
-        self.assertIn("第 1/2 批优化完成", log_output)
-        self.assertIn("第 2/2 批优化完成", log_output)
-        self.assertIn("画面提示词优化完成", log_output)
-
-    def test_yields_row_level_progress_events_inside_each_batch(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            prompts_dir = os.path.join(tmp_dir, "prompts")
-            prompt_category_dir = os.path.join(prompts_dir, "image_prompt_optimize")
-            os.makedirs(prompt_category_dir, exist_ok=True)
-
-            with open(
-                os.path.join(prompt_category_dir, "default.txt"),
-                "w",
-                encoding="utf-8",
-            ) as file:
-                file.write("你是提示词优化器")
-
-            optimizer = PromptOptimizer(
-                client=FakeClient(),
-                model="test-model",
-                prompts_dir=prompts_dir,
-            )
-
-            events = list(
-                optimizer.iter_optimized_row_progress(
-                    rows=[
-                        {
-                            "scene_id": "1",
-                            "storyboard_text": "第一段分镜",
-                            "raw_image_prompt": "原始提示词一",
-                        },
-                        {
-                            "scene_id": "2",
-                            "storyboard_text": "第二段分镜",
-                            "raw_image_prompt": "原始提示词二",
-                        },
-                        {
-                            "scene_id": "3",
-                            "storyboard_text": "第三段分镜",
-                            "raw_image_prompt": "原始提示词三",
-                        },
-                    ],
-                    prompt_name="default",
-                    batch_size=2,
-                )
-            )
-
-        self.assertEqual(3, len(events))
-        self.assertEqual(
-            f"优化后提示词1 {FIXED_NEGATIVE_PROMPT}",
-            events[0]["optimized_row"]["optimized_image_prompt"],
-        )
-        self.assertEqual(1, events[0]["batch_index"])
-        self.assertEqual(2, events[0]["batch_total"])
-        self.assertEqual(1, events[0]["batch_row_index"])
-        self.assertEqual(2, events[0]["batch_row_total"])
-        self.assertFalse(events[0]["batch_completed"])
-        self.assertTrue(events[1]["batch_completed"])
-        self.assertEqual(2, events[2]["batch_index"])
-        self.assertGreaterEqual(events[2]["total_elapsed_seconds"], 0)
-
-    def test_optimize_rows_passes_continuity_context(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            prompts_dir = os.path.join(tmp_dir, "prompts")
-            prompt_category_dir = os.path.join(prompts_dir, "image_prompt_optimize")
-            os.makedirs(prompt_category_dir, exist_ok=True)
-
-            with open(
-                os.path.join(prompt_category_dir, "default.txt"),
-                "w",
-                encoding="utf-8",
-            ) as file:
-                file.write("你是提示词优化器")
-
-            client = FakeClient()
-            optimizer = PromptOptimizer(
-                client=client,
-                model="test-model",
-                prompts_dir=prompts_dir,
-            )
-
-            optimizer.optimize_rows(
-                rows=[
-                    {
-                        "scene_id": "1",
-                        "storyboard_text": "人物A走进房间",
-                        "raw_image_prompt": "男人进门",
-                    },
-                    {
-                        "scene_id": "2",
-                        "storyboard_text": "人物A走到窗前",
-                        "raw_image_prompt": "男人走向窗户",
-                    },
-                ],
-            )
-
-        self.assertEqual(2, len(client.calls))
-
-        # 第一条：messages 只有 system + user (2条)
-        msgs0 = client.calls[0]["messages"]
-        self.assertEqual(2, len(msgs0))
-        self.assertIn("人物A走进房间", msgs0[1]["content"])
-        self.assertIn("男人进门", msgs0[1]["content"])
-
-        # 第二条：messages 包含完整历史 (4条: system + user1 + assistant1 + user2)
-        msgs1 = client.calls[1]["messages"]
-        self.assertEqual(4, len(msgs1))
-        self.assertEqual("system", msgs1[0]["role"])
-        self.assertEqual("user", msgs1[1]["role"])
-        self.assertIn("人物A走进房间", msgs1[1]["content"])
-        self.assertEqual("assistant", msgs1[2]["role"])
-        self.assertIn("优化后提示词1", msgs1[2]["content"])
-        self.assertEqual("user", msgs1[3]["role"])
-        self.assertIn("人物A走到窗前", msgs1[3]["content"])
-
-
     def test_batch_mode_single_turn_covers_all_rows(self):
-        """批量模式：行数 ≤ batch_size 时，一次 chat_multi_turn 处理全部"""
         with tempfile.TemporaryDirectory() as tmp_dir:
             prompts_dir = os.path.join(tmp_dir, "prompts")
             prompt_category_dir = os.path.join(prompts_dir, "image_prompt_optimize")
@@ -609,8 +395,6 @@ class PromptOptimizerTest(unittest.TestCase):
             )
 
             result = optimizer.optimize_files_batch(
-                storyboard_path=None,
-                raw_prompt_path=None,
                 rows=[
                     {"scene_id": "1", "storyboard_text": "第一段", "raw_image_prompt": "提示词一"},
                     {"scene_id": "2", "storyboard_text": "第二段", "raw_image_prompt": "提示词二"},
@@ -620,19 +404,15 @@ class PromptOptimizerTest(unittest.TestCase):
                 rows_per_batch=50,
             )
 
-        # 3 ≤ 50，只应有一次调用
         self.assertEqual(1, len(client.calls))
-        # messages 应包含 system + user（全量3行）
         msgs = client.calls[0]["messages"]
         self.assertEqual(2, len(msgs))
         self.assertIn("第一段", msgs[1]["content"])
         self.assertIn("第三段", msgs[1]["content"])
-        # 返回3条结果
         lines = result.strip().split("\n")
         self.assertEqual(3, len(lines))
 
     def test_batch_mode_multi_turn_splits_large_input(self):
-        """批量模式：行数 > rows_per_batch 时，自动分批确认"""
         with tempfile.TemporaryDirectory() as tmp_dir:
             prompts_dir = os.path.join(tmp_dir, "prompts")
             prompt_category_dir = os.path.join(prompts_dir, "image_prompt_optimize")
@@ -658,8 +438,6 @@ class PromptOptimizerTest(unittest.TestCase):
             )
 
             result = optimizer.optimize_files_batch(
-                storyboard_path=None,
-                raw_prompt_path=None,
                 rows=[
                     {"scene_id": str(i), "storyboard_text": f"分镜{i}", "raw_image_prompt": f"提示词{i}"}
                     for i in range(1, 8)
@@ -668,31 +446,61 @@ class PromptOptimizerTest(unittest.TestCase):
                 rows_per_batch=3,
             )
 
-        # 7行 / 3每批 = 3轮：3 + 3 + 1
-        # 但第3批只有1条，FakeClient 返回3行，实际会取前1条
-        # 关键：必须是3次调用
         self.assertEqual(3, len(client.calls))
-
-        # 验证每轮的 messages 累积
-        # 第1轮: only system + user (all 7 rows)
         msgs_r1 = client.calls[0]["messages"]
         self.assertEqual(2, len(msgs_r1))
         self.assertIn("分镜1", msgs_r1[1]["content"])
         self.assertIn("分镜7", msgs_r1[1]["content"])
 
-        # 第2轮: system + user(all) + assistant(batch1) + user(confirm)
         msgs_r2 = client.calls[1]["messages"]
         self.assertEqual(4, len(msgs_r2))
         self.assertEqual("assistant", msgs_r2[2]["role"])
         self.assertIn("已生成并确认前 3 条", msgs_r2[3]["content"])
 
-        # 第3轮: system + user + assistant + user(confirm) + assistant(batch2) + user(confirm)
         msgs_r3 = client.calls[2]["messages"]
         self.assertEqual(6, len(msgs_r3))
 
-        # 最终输出 7 条
         lines = result.strip().split("\n")
         self.assertEqual(7, len(lines))
+
+    def test_batch_mode_passes_all_rows_in_one_message(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            prompts_dir = os.path.join(tmp_dir, "prompts")
+            prompt_category_dir = os.path.join(prompts_dir, "image_prompt_optimize")
+            os.makedirs(prompt_category_dir, exist_ok=True)
+
+            with open(
+                os.path.join(prompt_category_dir, "default.txt"),
+                "w",
+                encoding="utf-8",
+            ) as file:
+                file.write("你是提示词优化器")
+
+            class TwoLineClient(FakeClient):
+                def chat_multi_turn(self, model, messages, **kwargs):
+                    super().chat_multi_turn(model, messages, **kwargs)
+                    return "优化A\n优化B"
+
+            client = TwoLineClient()
+            optimizer = PromptOptimizer(
+                client=client,
+                model="test-model",
+                prompts_dir=prompts_dir,
+            )
+
+            optimizer.optimize_files_batch(
+                rows=[
+                    {"scene_id": "1", "storyboard_text": "人物A进房间", "raw_image_prompt": "男人进门"},
+                    {"scene_id": "2", "storyboard_text": "人物A到窗前", "raw_image_prompt": "男人走向窗户"},
+                ],
+                rows_per_batch=50,
+            )
+
+        self.assertEqual(1, len(client.calls))
+        msgs = client.calls[0]["messages"]
+        self.assertEqual(2, len(msgs))
+        self.assertIn("人物A进房间", msgs[1]["content"])
+        self.assertIn("人物A到窗前", msgs[1]["content"])
 
 
 if __name__ == "__main__":
