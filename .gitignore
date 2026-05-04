@@ -18,6 +18,7 @@ input/*
 
 # Claude Code
 .claude/
+.worktrees/
 
 # OS/editor noise
 Thumbs.db
