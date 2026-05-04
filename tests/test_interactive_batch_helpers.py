@@ -35,9 +35,9 @@ class FakeBatchOptimizer:
         prompt_name="default",
         rows_per_batch=50,
     ):
-        if rows:
-            return "优化后提示词1\n优化后提示词2"
-        return "优化后提示词1\n优化后提示词2"
+        total = len(rows) if rows else 2
+        yield {"completed": total, "total": total, "batch_index": 1, "batch_total": 1}
+        yield "优化后提示词1\n优化后提示词2"
 
 
 class InteractiveBatchHelpersTest(unittest.TestCase):
@@ -101,7 +101,8 @@ class InteractiveBatchHelpersTest(unittest.TestCase):
             model = "test-model"
 
             def generate_files_batch(self, **kwargs):
-                return "视频提示词1\n视频提示词2"
+                yield {"completed": 2, "total": 2, "batch_index": 1, "batch_total": 1}
+                yield "视频提示词1\n视频提示词2"
 
         console = Console(record=True)
         with patch("core.interactive.write_file") as write_file_mock, \
@@ -131,7 +132,8 @@ class InteractiveBatchHelpersTest(unittest.TestCase):
             model = "test-model"
 
             def generate_files_batch(self, **kwargs):
-                return "视频提示词1\n视频提示词2"
+                yield {"completed": 2, "total": 2, "batch_index": 1, "batch_total": 1}
+                yield "视频提示词1\n视频提示词2"
 
         console = Console(record=True)
         snapshot_lengths = []

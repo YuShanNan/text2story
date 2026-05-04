@@ -56,11 +56,12 @@ class VideoPromptGenerator:
         rows: list[dict[str, str]] | None = None,
         prompt_name: str = "default",
         rows_per_batch: int = 50,
-    ) -> str:
+    ):
         """批量模式：全量行一次性传入，分批次输出并自动校验。
 
         将全部行拼接为一个 user message，要求模型按 rows_per_batch 分批输出。
-        每批完成后自动核对条数，确认后继续下一批，直到全部完成。
+        每批完成后自动核对条数，确认后继续下一批。每批 yield 一次进度事件，
+        最后 yield 最终结果字符串。
         """
         if rows is None:
             if storyboard_path is None or optimized_image_prompt_path is None:
@@ -95,15 +96,18 @@ class VideoPromptGenerator:
 
         all_lines: list[str] = []
         completed = 0
+        batch_index = 0
+        batch_total = (total + rows_per_batch - 1) // rows_per_batch
 
         logger.info(
-            "开始批量视频提示词生成 (共 %s 条分镜, 每批 %s 条, 模型: %s)",
+            "开始批量视频提示词生成 (共 %s 条分镜, %s 批, 模型: %s)",
             total,
-            rows_per_batch,
+            batch_total,
             self.model,
         )
 
         while completed < total:
+            batch_index += 1
             result = self.client.chat_multi_turn(
                 model=self.model,
                 messages=messages,
@@ -119,8 +123,10 @@ class VideoPromptGenerator:
             completed += len(batch_lines)
 
             logger.info(
-                "  批量生成: 已获取 %s/%s 条", completed, total
+                "  第 %s/%s 批生成完成 (%s/%s 条)", batch_index, batch_total, completed, total
             )
+            yield {"completed": completed, "total": total,
+                   "batch_index": batch_index, "batch_total": batch_total}
 
             if completed >= total:
                 break
@@ -136,4 +142,4 @@ class VideoPromptGenerator:
         final_lines = [_normalize_video_prompt(line) for line in all_lines]
 
         logger.info("批量视频提示词生成完成 (%s 条)", len(final_lines))
-        return "\n".join(final_lines)
+        yield "\n".join(final_lines)

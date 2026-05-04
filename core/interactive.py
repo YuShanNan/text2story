@@ -491,23 +491,27 @@ def write_txt_optimization_batches(
             "优化进度",
             total=row_total,
             completed=0,
-            step_label="批量优化",
+            step_label="第 0/? 批",
             current_label=f"共 {row_total} 行，等待模型处理...",
             total_elapsed="0.0s",
             unit_elapsed="0.0s",
         )
-        result = optimizer.optimize_files_batch(
+        result = ""
+        for step in optimizer.optimize_files_batch(
             storyboard_path=storyboard_path,
             raw_prompt_path=raw_prompt_path,
             prompt_name=prompt_name,
             rows_per_batch=batch_size,
-        )
-        progress.update(
-            task_id,
-            completed=row_total,
-            step_label="批量优化完成",
-            current_label=f"共 {row_total} 行",
-        )
+        ):
+            if isinstance(step, str):
+                result = step
+                progress.update(task_id, completed=row_total,
+                                step_label="优化完成",
+                                current_label=f"共 {row_total} 行")
+            else:
+                progress.update(task_id, completed=step["completed"],
+                                step_label=f"第 {step['batch_index']}/{step['batch_total']} 批",
+                                current_label=f"已获取 {step['completed']}/{step['total']} 行")
 
     write_file(output_path, result, log_saved=False)
     return result
@@ -531,22 +535,26 @@ def write_csv_optimization_batches(
             "优化进度",
             total=row_total,
             completed=0,
-            step_label="批量优化",
+            step_label="第 0/? 批",
             current_label=f"共 {row_total} 行，等待模型处理...",
             total_elapsed="0.0s",
             unit_elapsed="0.0s",
         )
-        result = optimizer.optimize_files_batch(
+        result = ""
+        for step in optimizer.optimize_files_batch(
             rows=rows,
             prompt_name=prompt_name,
             rows_per_batch=batch_size,
-        )
-        progress.update(
-            task_id,
-            completed=row_total,
-            step_label="批量优化完成",
-            current_label=f"共 {row_total} 行",
-        )
+        ):
+            if isinstance(step, str):
+                result = step
+                progress.update(task_id, completed=row_total,
+                                step_label="优化完成",
+                                current_label=f"共 {row_total} 行")
+            else:
+                progress.update(task_id, completed=step["completed"],
+                                step_label=f"第 {step['batch_index']}/{step['batch_total']} 批",
+                                current_label=f"已获取 {step['completed']}/{step['total']} 行")
 
     optimized_lines = result.strip().split("\n")
     optimized_rows = [
@@ -582,23 +590,27 @@ def write_txt_video_prompt_batches(
             "生成进度",
             total=row_total,
             completed=0,
-            step_label="批量生成",
+            step_label="第 0/? 批",
             current_label=f"共 {row_total} 行，等待模型处理...",
             total_elapsed="0.0s",
             unit_elapsed="0.0s",
         )
-        result = generator.generate_files_batch(
+        result = ""
+        for step in generator.generate_files_batch(
             storyboard_path=storyboard_path,
             optimized_image_prompt_path=optimized_image_prompt_path,
             prompt_name=prompt_name,
             rows_per_batch=batch_size,
-        )
-        progress.update(
-            task_id,
-            completed=row_total,
-            step_label="批量生成完成",
-            current_label=f"共 {row_total} 行",
-        )
+        ):
+            if isinstance(step, str):
+                result = step
+                progress.update(task_id, completed=row_total,
+                                step_label="生成完成",
+                                current_label=f"共 {row_total} 行")
+            else:
+                progress.update(task_id, completed=step["completed"],
+                                step_label=f"第 {step['batch_index']}/{step['batch_total']} 批",
+                                current_label=f"已获取 {step['completed']}/{step['total']} 行")
 
     write_file(output_path, result, log_saved=False)
     return result
@@ -622,22 +634,26 @@ def write_csv_video_prompt_batches(
             "生成进度",
             total=row_total,
             completed=0,
-            step_label="批量生成",
+            step_label="第 0/? 批",
             current_label=f"共 {row_total} 行，等待模型处理...",
             total_elapsed="0.0s",
             unit_elapsed="0.0s",
         )
-        result = generator.generate_files_batch(
+        result = ""
+        for step in generator.generate_files_batch(
             rows=rows,
             prompt_name=prompt_name,
             rows_per_batch=batch_size,
-        )
-        progress.update(
-            task_id,
-            completed=row_total,
-            step_label="批量生成完成",
-            current_label=f"共 {row_total} 行",
-        )
+        ):
+            if isinstance(step, str):
+                result = step
+                progress.update(task_id, completed=row_total,
+                                step_label="生成完成",
+                                current_label=f"共 {row_total} 行")
+            else:
+                progress.update(task_id, completed=step["completed"],
+                                step_label=f"第 {step['batch_index']}/{step['batch_total']} 批",
+                                current_label=f"已获取 {step['completed']}/{step['total']} 行")
 
     video_lines = result.strip().split("\n")
     video_rows = [
