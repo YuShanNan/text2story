@@ -665,6 +665,42 @@ def _format_elapsed_seconds(seconds: float) -> str:
     return f"{seconds:.1f}s"
 
 
+def _check_model_connectivity(
+    client: "OpenAICompatClient",
+    model: str,
+    console_obj: Console | None = None,
+) -> None:
+    """连通性测试：发送极短消息验证模型可达，失败抛 ConnectionError。"""
+    console_obj = console_obj or console
+
+    with suppress_console_logs(), _create_step_progress(console_obj) as progress:
+        task_id = progress.add_task(
+            "连通测试",
+            total=1,
+            completed=0,
+            step_label="连通测试",
+            current_label="正在连接模型...",
+            total_elapsed="0.0s",
+        )
+        try:
+            result = client.chat(
+                model=model,
+                system_prompt="",
+                user_content="ping",
+                max_tokens=1,
+                temperature=0,
+            )
+            if not result.strip():
+                raise ConnectionError("模型返回空内容")
+        except ConnectionError:
+            progress.update(task_id, current_label="连接失败")
+            raise
+        except Exception:
+            progress.update(task_id, current_label="连接失败")
+            raise ConnectionError("无法连接到模型服务") from None
+        progress.update(task_id, completed=1, current_label="连接成功")
+
+
 def run_srt_correction_with_progress(
     corrector: SrtCorrector,
     srt_content: str,
