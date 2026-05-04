@@ -574,7 +574,6 @@ def write_txt_video_prompt_batches(
 ) -> str:
     console_obj = console_obj or console
     _check_model_connectivity(generator.client, generator.model, console_obj)
-    video_lines = []
 
     row_total = len(read_non_empty_lines(storyboard_path))
 
@@ -583,29 +582,26 @@ def write_txt_video_prompt_batches(
             "生成进度",
             total=row_total,
             completed=0,
-            step_label="生成进度",
+            step_label="批量生成",
             current_label=f"共 {row_total} 行，等待模型处理...",
             total_elapsed="0.0s",
             unit_elapsed="0.0s",
         )
-        for event in generator.iter_generate_file_progress(
+        result = generator.generate_files_batch(
             storyboard_path=storyboard_path,
             optimized_image_prompt_path=optimized_image_prompt_path,
             prompt_name=prompt_name,
-            batch_size=batch_size,
-        ):
-            video_lines.append(event["video_line"])
-            write_file(output_path, "\n".join(video_lines), log_saved=False)
-            progress.update(
-                task_id,
-                completed=event["row_index"],
-                step_label=f"第 {event['batch_index']}/{event['batch_total']} 批",
-                current_label=f"批内 {event['batch_row_index']}/{event['batch_row_total']}",
-                unit_elapsed=_format_elapsed_seconds(event["batch_elapsed_seconds"]),
-                total_elapsed=_format_elapsed_seconds(event["total_elapsed_seconds"]),
-            )
+            rows_per_batch=batch_size,
+        )
+        progress.update(
+            task_id,
+            completed=row_total,
+            step_label="批量生成完成",
+            current_label=f"共 {row_total} 行",
+        )
 
-    return "\n".join(video_lines)
+    write_file(output_path, result, log_saved=False)
+    return result
 
 
 def write_csv_video_prompt_batches(
@@ -618,7 +614,6 @@ def write_csv_video_prompt_batches(
 ) -> list[dict[str, str]]:
     console_obj = console_obj or console
     _check_model_connectivity(generator.client, generator.model, console_obj)
-    video_rows = []
 
     row_total = len(rows)
 
@@ -627,27 +622,35 @@ def write_csv_video_prompt_batches(
             "生成进度",
             total=row_total,
             completed=0,
-            step_label="生成进度",
+            step_label="批量生成",
             current_label=f"共 {row_total} 行，等待模型处理...",
             total_elapsed="0.0s",
             unit_elapsed="0.0s",
         )
-        for event in generator.iter_generate_row_progress(
+        result = generator.generate_files_batch(
             rows=rows,
             prompt_name=prompt_name,
-            batch_size=batch_size,
-        ):
-            video_rows.append(event["generated_row"])
-            write_video_prompt_table(output_path, video_rows)
-            progress.update(
-                task_id,
-                completed=event["row_index"],
-                step_label=f"第 {event['batch_index']}/{event['batch_total']} 批",
-                current_label=f"批内 {event['batch_row_index']}/{event['batch_row_total']}",
-                unit_elapsed=_format_elapsed_seconds(event["batch_elapsed_seconds"]),
-                total_elapsed=_format_elapsed_seconds(event["total_elapsed_seconds"]),
-            )
+            rows_per_batch=batch_size,
+        )
+        progress.update(
+            task_id,
+            completed=row_total,
+            step_label="批量生成完成",
+            current_label=f"共 {row_total} 行",
+        )
 
+    video_lines = result.strip().split("\n")
+    video_rows = [
+        {
+            "scene_id": rows[i]["scene_id"],
+            "storyboard_text": rows[i]["storyboard_text"],
+            "optimized_image_prompt": rows[i]["optimized_image_prompt"],
+            "video_prompt": line,
+            "notes_cn": "",
+        }
+        for i, line in enumerate(video_lines)
+    ]
+    write_video_prompt_table(output_path, video_rows)
     return video_rows
 
 

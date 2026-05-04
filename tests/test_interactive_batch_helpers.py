@@ -100,31 +100,8 @@ class InteractiveBatchHelpersTest(unittest.TestCase):
             client = FakeClient()
             model = "test-model"
 
-            def iter_generate_file_progress(self, **kwargs):
-                yield {
-                    "video_line": "视频提示词1",
-                    "row_index": 1,
-                    "row_total": 2,
-                    "batch_index": 1,
-                    "batch_total": 1,
-                    "batch_row_index": 1,
-                    "batch_row_total": 2,
-                    "batch_elapsed_seconds": 1.5,
-                    "total_elapsed_seconds": 1.5,
-                    "batch_completed": False,
-                }
-                yield {
-                    "video_line": "视频提示词2",
-                    "row_index": 2,
-                    "row_total": 2,
-                    "batch_index": 1,
-                    "batch_total": 1,
-                    "batch_row_index": 2,
-                    "batch_row_total": 2,
-                    "batch_elapsed_seconds": 3.0,
-                    "total_elapsed_seconds": 3.0,
-                    "batch_completed": True,
-                }
+            def generate_files_batch(self, **kwargs):
+                return "视频提示词1\n视频提示词2"
 
         console = Console(record=True)
         with patch("core.interactive.write_file") as write_file_mock, \
@@ -140,11 +117,9 @@ class InteractiveBatchHelpersTest(unittest.TestCase):
             )
 
         self.assertEqual("视频提示词1\n视频提示词2", final_text)
-        self.assertEqual(2, write_file_mock.call_count)
-        self.assertEqual("视频提示词1", write_file_mock.call_args_list[0].args[1])
-        self.assertEqual("视频提示词1\n视频提示词2", write_file_mock.call_args_list[1].args[1])
+        self.assertEqual(1, write_file_mock.call_count)
+        self.assertEqual("视频提示词1\n视频提示词2", write_file_mock.call_args_list[0].args[1])
         self.assertEqual(False, write_file_mock.call_args_list[0].kwargs.get("log_saved"))
-        self.assertEqual(False, write_file_mock.call_args_list[1].kwargs.get("log_saved"))
         output = console.export_text()
         self.assertNotIn("第 1/1 批完成", output)
         self.assertNotIn("本批用时", output)
@@ -155,17 +130,8 @@ class InteractiveBatchHelpersTest(unittest.TestCase):
             client = FakeClient()
             model = "test-model"
 
-            def iter_generate_row_progress(self, **kwargs):
-                yield {
-                    "generated_row": {"scene_id": "1", "storyboard_text": "第一段分镜", "optimized_image_prompt": "优化后生图提示词一", "video_prompt": "视频提示词1", "notes_cn": ""},
-                    "row_index": 1, "row_total": 2, "batch_index": 1, "batch_total": 1,
-                    "batch_row_index": 1, "batch_row_total": 2, "batch_elapsed_seconds": 1.5, "total_elapsed_seconds": 1.5, "batch_completed": False,
-                }
-                yield {
-                    "generated_row": {"scene_id": "2", "storyboard_text": "第二段分镜", "optimized_image_prompt": "优化后生图提示词二", "video_prompt": "视频提示词2", "notes_cn": ""},
-                    "row_index": 2, "row_total": 2, "batch_index": 1, "batch_total": 1,
-                    "batch_row_index": 2, "batch_row_total": 2, "batch_elapsed_seconds": 3.0, "total_elapsed_seconds": 3.0, "batch_completed": True,
-                }
+            def generate_files_batch(self, **kwargs):
+                return "视频提示词1\n视频提示词2"
 
         console = Console(record=True)
         snapshot_lengths = []
@@ -190,8 +156,8 @@ class InteractiveBatchHelpersTest(unittest.TestCase):
             )
 
         self.assertEqual(2, len(final_rows))
-        self.assertEqual(2, write_table_mock.call_count)
-        self.assertEqual([1, 2], snapshot_lengths)
+        self.assertEqual(1, write_table_mock.call_count)
+        self.assertEqual([2], snapshot_lengths)
         output = console.export_text()
         self.assertNotIn("第 1/1 批完成", output)
         self.assertNotIn("本批用时", output)

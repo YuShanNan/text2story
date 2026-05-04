@@ -1,6 +1,4 @@
-import time
-
-from utils.file_utils import load_prompt, read_file, read_non_empty_lines, batched, normalize_whitespace
+from utils.file_utils import load_prompt, read_non_empty_lines, normalize_whitespace
 from utils.logger import get_logger
 
 DEFAULT_BATCH_SIZE = 10
@@ -9,14 +7,6 @@ logger = get_logger(__name__)
 
 def _normalize_video_prompt(text: str) -> str:
     return normalize_whitespace(text)
-
-
-def _build_video_user_content(row: dict[str, str]) -> str:
-    parts = [
-        f"[Current storyboard / 分镜原文]\n{row['storyboard_text']}",
-        f"[Current optimized image prompt / 优化后生图提示词]\n{row['optimized_image_prompt']}",
-    ]
-    return "\n\n".join(parts)
 
 
 class VideoPromptGenerator:
@@ -31,60 +21,6 @@ class VideoPromptGenerator:
         self.model = model
         self.prompts_dir = prompts_dir
         self.fallback_model = fallback_model
-
-    def generate_files(
-        self,
-        storyboard_path: str,
-        optimized_image_prompt_path: str,
-        prompt_name: str = "default",
-        batch_size: int = DEFAULT_BATCH_SIZE,
-    ) -> str:
-        video_lines = []
-        for generated_batch in self.iter_generate_file_batches(
-            storyboard_path=storyboard_path,
-            optimized_image_prompt_path=optimized_image_prompt_path,
-            prompt_name=prompt_name,
-            batch_size=batch_size,
-        ):
-            video_lines.extend(generated_batch)
-        return "\n".join(video_lines)
-
-    def iter_generate_file_batches(
-        self,
-        storyboard_path: str,
-        optimized_image_prompt_path: str,
-        prompt_name: str = "default",
-        batch_size: int = DEFAULT_BATCH_SIZE,
-    ):
-        generated_batch = []
-        for event in self.iter_generate_file_progress(
-            storyboard_path=storyboard_path,
-            optimized_image_prompt_path=optimized_image_prompt_path,
-            prompt_name=prompt_name,
-            batch_size=batch_size,
-        ):
-            generated_batch.append(event["video_line"])
-            if event["batch_completed"]:
-                yield generated_batch
-                generated_batch = []
-
-    def iter_generate_file_progress(
-        self,
-        storyboard_path: str,
-        optimized_image_prompt_path: str,
-        prompt_name: str = "default",
-        batch_size: int = DEFAULT_BATCH_SIZE,
-    ):
-        rows = self.build_rows_from_files(
-            storyboard_path=storyboard_path,
-            optimized_image_prompt_path=optimized_image_prompt_path,
-        )
-        for event in self.iter_generate_row_progress(
-            rows=rows,
-            prompt_name=prompt_name,
-            batch_size=batch_size,
-        ):
-            yield {**event, "video_line": event["generated_row"]["video_prompt"]}
 
     def build_rows_from_files(
         self,
@@ -113,99 +49,91 @@ class VideoPromptGenerator:
             )
         ]
 
-    def generate_rows(
+    def generate_files_batch(
         self,
-        rows: list[dict[str, str]],
+        storyboard_path: str | None = None,
+        optimized_image_prompt_path: str | None = None,
+        rows: list[dict[str, str]] | None = None,
         prompt_name: str = "default",
-        batch_size: int = DEFAULT_BATCH_SIZE,
-    ) -> list[dict[str, str]]:
-        generated_rows = []
-        for generated_batch in self.iter_generate_row_batches(
-            rows=rows,
-            prompt_name=prompt_name,
-            batch_size=batch_size,
-        ):
-            generated_rows.extend(generated_batch)
-        return generated_rows
+        rows_per_batch: int = 50,
+    ) -> str:
+        """批量模式：全量行一次性传入，分批次输出并自动校验。
 
-    def iter_generate_row_batches(
-        self,
-        rows: list[dict[str, str]],
-        prompt_name: str = "default",
-        batch_size: int = DEFAULT_BATCH_SIZE,
-    ):
-        generated_batch = []
-        for event in self.iter_generate_row_progress(
-            rows=rows,
-            prompt_name=prompt_name,
-            batch_size=batch_size,
-        ):
-            generated_batch.append(event["generated_row"])
-            if event["batch_completed"]:
-                yield generated_batch
-                generated_batch = []
+        将全部行拼接为一个 user message，要求模型按 rows_per_batch 分批输出。
+        每批完成后自动核对条数，确认后继续下一批，直到全部完成。
+        """
+        if rows is None:
+            if storyboard_path is None or optimized_image_prompt_path is None:
+                raise ValueError(
+                    "必须提供 rows 参数，或同时提供 storyboard_path + optimized_image_prompt_path"
+                )
+            rows = self.build_rows_from_files(
+                storyboard_path, optimized_image_prompt_path
+            )
 
-    def iter_generate_row_progress(
-        self,
-        rows: list[dict[str, str]],
-        prompt_name: str = "default",
-        batch_size: int = DEFAULT_BATCH_SIZE,
-    ):
         system_prompt = load_prompt(
             self.prompts_dir, "video_prompt_from_image", prompt_name
         )
-        batches = list(batched(rows, batch_size))
-        total = len(batches)
-        total_rows = len(rows)
-        total_start = time.perf_counter()
+        total = len(rows)
 
-        logger.info(
-            "开始视频提示词生成 (共 %s 条分镜, %s 批, 模型: %s, 提示词: %s)",
-            total_rows,
-            total,
-            self.model,
-            prompt_name,
+        all_rows_text = "\n\n".join(
+            f"[{i + 1}] 分镜原文：{row['storyboard_text']}\n"
+            f"    优化后生图提示词：{row['optimized_image_prompt']}"
+            for i, row in enumerate(rows)
+        )
+
+        first_batch_count = min(rows_per_batch, total)
+        initial_user = (
+            f"以下是 {total} 条分镜和对应的优化后生图提示词。\n\n"
+            f"{all_rows_text}\n\n"
+            f"请先生成前 {first_batch_count} 条的视频提示词，"
+            f"每条占一行，按顺序输出。完成后不要输出其他内容。"
         )
 
         messages: list[dict] = [{"role": "system", "content": system_prompt}]
-        completed_rows = 0
-        for index, row_batch in enumerate(batches, start=1):
-            batch_start = time.perf_counter()
-            batch_row_total = len(row_batch)
-            logger.info("  生成第 %s/%s 批... (Ctrl+C 可中断)", index, total)
-            for batch_row_index, row in enumerate(row_batch, start=1):
-                user_content = _build_video_user_content(row)
-                messages.append({"role": "user", "content": user_content})
-                video_prompt = self.client.chat_multi_turn(
-                    model=self.model,
-                    messages=messages,
-                    temperature=0.7,
-                    fallback_model=self.fallback_model,
-                )
-                messages.append({"role": "assistant", "content": video_prompt})
-                generated_row = {
-                    "scene_id": row["scene_id"],
-                    "storyboard_text": row["storyboard_text"],
-                    "optimized_image_prompt": row["optimized_image_prompt"],
-                    "video_prompt": _normalize_video_prompt(video_prompt),
-                    "notes_cn": "",
-                }
-                completed_rows += 1
-                batch_completed = batch_row_index == batch_row_total
-                if batch_completed:
-                    logger.info("  第 %s/%s 批生成完成", index, total)
+        messages.append({"role": "user", "content": initial_user})
 
-                yield {
-                    "generated_row": generated_row,
-                    "row_index": completed_rows,
-                    "row_total": total_rows,
-                    "batch_index": index,
-                    "batch_total": total,
-                    "batch_row_index": batch_row_index,
-                    "batch_row_total": batch_row_total,
-                    "batch_elapsed_seconds": time.perf_counter() - batch_start,
-                    "total_elapsed_seconds": time.perf_counter() - total_start,
-                    "batch_completed": batch_completed,
-                }
+        all_lines: list[str] = []
+        completed = 0
 
-        logger.info("视频提示词生成完成")
+        logger.info(
+            "开始批量视频提示词生成 (共 %s 条分镜, 每批 %s 条, 模型: %s)",
+            total,
+            rows_per_batch,
+            self.model,
+        )
+
+        while completed < total:
+            result = self.client.chat_multi_turn(
+                model=self.model,
+                messages=messages,
+                temperature=0.7,
+                fallback_model=self.fallback_model,
+            )
+            messages.append({"role": "assistant", "content": result})
+
+            lines = [l.strip() for l in result.strip().split("\n") if l.strip()]
+            needed = min(rows_per_batch, total - completed)
+            batch_lines = lines[:needed]
+            all_lines.extend(batch_lines)
+            completed += len(batch_lines)
+
+            logger.info(
+                "  批量生成: 已获取 %s/%s 条", completed, total
+            )
+
+            if completed >= total:
+                break
+
+            next_count = min(rows_per_batch, total - completed)
+            confirm = (
+                f"已生成并确认前 {completed} 条。"
+                f"请继续生成第 {completed + 1}-{completed + next_count} 条的"
+                f"视频提示词，每条占一行，按顺序输出。"
+            )
+            messages.append({"role": "user", "content": confirm})
+
+        final_lines = [_normalize_video_prompt(line) for line in all_lines]
+
+        logger.info("批量视频提示词生成完成 (%s 条)", len(final_lines))
+        return "\n".join(final_lines)
