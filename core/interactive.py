@@ -674,7 +674,7 @@ def _check_model_connectivity(
     model: str,
     console_obj: Console | None = None,
 ) -> None:
-    """连通性测试：发送极短消息验证模型可达，失败抛 ConnectionError。"""
+    """连通性测试：发送极短消息验证模型可达，失败抛 RuntimeError。"""
     console_obj = console_obj or console
 
     with suppress_console_logs(), _create_step_progress(console_obj) as progress:
@@ -695,13 +695,16 @@ def _check_model_connectivity(
                 temperature=0,
             )
             if not result.strip():
-                raise ConnectionError("模型返回空内容")
-        except ConnectionError:
+                raise RuntimeError("连通测试失败：模型返回空内容")
+        except RuntimeError:
             progress.update(task_id, current_label="连接失败")
             raise
         except Exception:
             progress.update(task_id, current_label="连接失败")
-            raise ConnectionError("无法连接到模型服务") from None
+            raise RuntimeError(
+                "无法连接到模型服务，请检查 .env 中的 "
+                "MODEL_BASE_URL、MODEL_API_KEY 和网络连接"
+            ) from None
         progress.update(task_id, completed=1, current_label="连接成功")
 
 
