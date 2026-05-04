@@ -582,5 +582,118 @@ class PromptOptimizerTest(unittest.TestCase):
         self.assertIn("人物A走到窗前", msgs1[3]["content"])
 
 
+    def test_batch_mode_single_turn_covers_all_rows(self):
+        """批量模式：行数 ≤ batch_size 时，一次 chat_multi_turn 处理全部"""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            prompts_dir = os.path.join(tmp_dir, "prompts")
+            prompt_category_dir = os.path.join(prompts_dir, "image_prompt_optimize")
+            os.makedirs(prompt_category_dir, exist_ok=True)
+
+            with open(
+                os.path.join(prompt_category_dir, "default.txt"),
+                "w",
+                encoding="utf-8",
+            ) as file:
+                file.write("你是提示词优化器")
+
+            class MultiLineClient(FakeClient):
+                def chat_multi_turn(self, model, messages, **kwargs):
+                    super().chat_multi_turn(model, messages, **kwargs)
+                    return "优化A\n优化B\n优化C"
+
+            client = MultiLineClient()
+            optimizer = PromptOptimizer(
+                client=client,
+                model="test-model",
+                prompts_dir=prompts_dir,
+            )
+
+            result = optimizer.optimize_files_batch(
+                storyboard_path=None,
+                raw_prompt_path=None,
+                rows=[
+                    {"scene_id": "1", "storyboard_text": "第一段", "raw_image_prompt": "提示词一"},
+                    {"scene_id": "2", "storyboard_text": "第二段", "raw_image_prompt": "提示词二"},
+                    {"scene_id": "3", "storyboard_text": "第三段", "raw_image_prompt": "提示词三"},
+                ],
+                prompt_name="default",
+                rows_per_batch=50,
+            )
+
+        # 3 ≤ 50，只应有一次调用
+        self.assertEqual(1, len(client.calls))
+        # messages 应包含 system + user（全量3行）
+        msgs = client.calls[0]["messages"]
+        self.assertEqual(2, len(msgs))
+        self.assertIn("第一段", msgs[1]["content"])
+        self.assertIn("第三段", msgs[1]["content"])
+        # 返回3条结果
+        lines = result.strip().split("\n")
+        self.assertEqual(3, len(lines))
+
+    def test_batch_mode_multi_turn_splits_large_input(self):
+        """批量模式：行数 > rows_per_batch 时，自动分批确认"""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            prompts_dir = os.path.join(tmp_dir, "prompts")
+            prompt_category_dir = os.path.join(prompts_dir, "image_prompt_optimize")
+            os.makedirs(prompt_category_dir, exist_ok=True)
+
+            with open(
+                os.path.join(prompt_category_dir, "default.txt"),
+                "w",
+                encoding="utf-8",
+            ) as file:
+                file.write("你是提示词优化器")
+
+            class CountingFakeClient(FakeClient):
+                def chat_multi_turn(self, model, messages, **kwargs):
+                    result = super().chat_multi_turn(model, messages, **kwargs)
+                    return f"结果{len(self.calls)}A\n结果{len(self.calls)}B\n结果{len(self.calls)}C"
+
+            client = CountingFakeClient()
+            optimizer = PromptOptimizer(
+                client=client,
+                model="test-model",
+                prompts_dir=prompts_dir,
+            )
+
+            result = optimizer.optimize_files_batch(
+                storyboard_path=None,
+                raw_prompt_path=None,
+                rows=[
+                    {"scene_id": str(i), "storyboard_text": f"分镜{i}", "raw_image_prompt": f"提示词{i}"}
+                    for i in range(1, 8)
+                ],
+                prompt_name="default",
+                rows_per_batch=3,
+            )
+
+        # 7行 / 3每批 = 3轮：3 + 3 + 1
+        # 但第3批只有1条，FakeClient 返回3行，实际会取前1条
+        # 关键：必须是3次调用
+        self.assertEqual(3, len(client.calls))
+
+        # 验证每轮的 messages 累积
+        # 第1轮: only system + user (all 7 rows)
+        msgs_r1 = client.calls[0]["messages"]
+        self.assertEqual(2, len(msgs_r1))
+        self.assertIn("分镜1", msgs_r1[1]["content"])
+        self.assertIn("分镜7", msgs_r1[1]["content"])
+
+        # 第2轮: system + user(all) + assistant(batch1) + user(confirm)
+        msgs_r2 = client.calls[1]["messages"]
+        self.assertEqual(4, len(msgs_r2))
+        self.assertEqual("assistant", msgs_r2[2]["role"])
+        self.assertIn("已生成并确认前 3 条", msgs_r2[3]["content"])
+
+        # 第3轮: system + user + assistant + user(confirm) + assistant(batch2) + user(confirm)
+        msgs_r3 = client.calls[2]["messages"]
+        self.assertEqual(6, len(msgs_r3))
+
+        # 最终输出 7 条
+        lines = result.strip().split("\n")
+        self.assertEqual(7, len(lines))
+
+
 if __name__ == "__main__":
     unittest.main()
