@@ -485,7 +485,7 @@ def write_txt_optimization_batches(
             total=row_total,
             completed=0,
             step_label="优化进度",
-            current_label=f"共 {row_total} 行，正在请求模型...",
+            current_label=f"共 {row_total} 行，等待模型处理...",
             total_elapsed="0.0s",
             unit_elapsed="0.0s",
         )
@@ -529,7 +529,7 @@ def write_csv_optimization_batches(
             total=row_total,
             completed=0,
             step_label="优化进度",
-            current_label=f"共 {row_total} 行，正在请求模型...",
+            current_label=f"共 {row_total} 行，等待模型处理...",
             total_elapsed="0.0s",
             unit_elapsed="0.0s",
         )
@@ -573,7 +573,7 @@ def write_txt_video_prompt_batches(
             total=row_total,
             completed=0,
             step_label="生成进度",
-            current_label=f"共 {row_total} 行，正在请求模型...",
+            current_label=f"共 {row_total} 行，等待模型处理...",
             total_elapsed="0.0s",
             unit_elapsed="0.0s",
         )
@@ -617,7 +617,7 @@ def write_csv_video_prompt_batches(
             total=row_total,
             completed=0,
             step_label="生成进度",
-            current_label=f"共 {row_total} 行，正在请求模型...",
+            current_label=f"共 {row_total} 行，等待模型处理...",
             total_elapsed="0.0s",
             unit_elapsed="0.0s",
         )
@@ -728,7 +728,7 @@ def run_srt_correction_with_progress(
             total=batch_total,
             completed=0,
             step_label="SRT 修正",
-            current_label=f"共 {batch_total} 批，正在请求模型...",
+            current_label=f"共 {batch_total} 批，等待模型处理...",
             total_elapsed="0.0s",
         )
         for event in corrector.iter_correct_progress(srt_content, prompt_name):
@@ -766,7 +766,7 @@ def run_storyboard_generation_with_progress(
             total=chunk_total,
             completed=0,
             step_label="分镜生成",
-            current_label=f"共 {chunk_total} 段，正在请求模型...",
+            current_label=f"共 {chunk_total} 段，等待模型处理...",
             total_elapsed="0.0s",
         )
         for event in generator.iter_generate_progress(text, prompt_name):
@@ -821,7 +821,7 @@ def run_prompt_generation_with_progress(
             total=scene_total,
             completed=0,
             step_label="提示词生成",
-            current_label=f"共 {scene_total} 个分镜，正在请求模型...",
+            current_label=f"共 {scene_total} 个分镜，等待模型处理...",
             total_elapsed="0.0s",
         )
         current_stage = None
