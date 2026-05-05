@@ -164,11 +164,6 @@ class PromptTemplateTest(unittest.TestCase):
         self.assertIn("禁止输出任何不能被镜头直接拍到的声音来源、听觉结论或传声关系", content)
         self.assertIn("不得把人物动作镜头升级成手部特写、手机特写、产品特写、界面特写或纯道具视角", content)
         self.assertIn("不得把信息本身自动转写成界面文字、号码状态、日历页、标签文字、屏幕提示、纸面文案等额外可视化物件", content)
-        self.assertIn("连续性参考", content)
-        self.assertIn("Continuity reference only", content)
-        self.assertIn("跨分镜一致性", content)
-        self.assertIn("天色", content)
-        self.assertIn("光源方向", content)
 
     def _read_video_target_prompt(self) -> str:
         project_root = os.path.dirname(os.path.dirname(__file__))

@@ -22,13 +22,14 @@ from core.interactive import (
     run_storyboard_generation_with_progress,
     write_csv_optimization_batches,
     write_txt_optimization_batches,
+    write_txt_video_prompt_batches,
+    write_csv_video_prompt_batches,
+    scan_storyboard_prompt_files,
 )
 from utils.file_utils import read_file, write_file, get_stem, get_safe_stem, get_output_dir_for_file, shorten_middle
 from utils.table_utils import (
     merge_prompt_tables,
     merge_video_prompt_tables,
-    write_optimized_prompt_table,
-    write_video_prompt_table,
 )
 
 console = Console()
@@ -396,13 +397,15 @@ def generate_video_prompts(
                 get_output_dir_for_file(stem), f"{stem}_video_prompts.txt"
             )
 
-        result = generator.generate_files(
+        write_txt_video_prompt_batches(
+            generator=generator,
             storyboard_path=storyboard_path,
             optimized_image_prompt_path=optimized_image_prompt_path,
             prompt_name=prompt_name,
+            output_path=output_path,
             batch_size=batch_size,
+            console_obj=console,
         )
-        write_file(output_path, result)
 
         console.print(f"[green]✓ 视频提示词: {output_path}[/]")
         return
@@ -417,12 +420,14 @@ def generate_video_prompts(
         storyboard_table_path=storyboard_table_path,
         image_prompt_table_path=image_prompt_table_path,
     )
-    generated_rows = generator.generate_rows(
+    write_csv_video_prompt_batches(
+        generator=generator,
         rows=merged_rows,
         prompt_name=prompt_name,
+        output_path=output_path,
         batch_size=batch_size,
+        console_obj=console,
     )
-    write_video_prompt_table(output_path, generated_rows)
     console.print(f"[green]✓ 视频提示词表: {output_path}[/]")
 
 
@@ -454,10 +459,10 @@ def run(input_path, correction_prompt, storyboard_prompt, output_dir):
 
 
 @cli.command(name="continue-run")
-@click.option("--storyboard", "storyboard_path", required=True,
-              help="输入分镜 TXT 文件路径")
-@click.option("--raw-prompts", "raw_prompt_path", required=True,
-              help="输入原始画面提示词 TXT 文件路径")
+@click.option("--storyboard", "-s", "storyboard_paths", multiple=True, required=True,
+              help="输入分镜 TXT 文件路径（可多次指定，如 -s a.txt -s b.txt）")
+@click.option("--raw-prompts", "-r", "raw_prompt_paths", multiple=True, default=None,
+              help="手动指定原始画面提示词 TXT 路径（按顺序与 --storyboard 一一对应；省略则自动配对）")
 @click.option("--optimize-prompt", default="default",
               help="画面提示词优化模板名称")
 @click.option("--video-prompt", "video_prompt_name", default="default",
@@ -465,25 +470,61 @@ def run(input_path, correction_prompt, storyboard_prompt, output_dir):
 @click.option("--batch-size", default=DEFAULT_BATCH_SIZE, type=int,
               help="每批处理的分镜数量")
 @click.option("--output-dir", "-o", "output_dir", default=None,
-              help="输出目录")
-def continue_run(storyboard_path, raw_prompt_path, optimize_prompt, video_prompt_name,
+              help="输出目录（仅单文件模式生效，多文件时各文件输出到自身目录）")
+def continue_run(storyboard_paths, raw_prompt_paths, optimize_prompt, video_prompt_name,
                  batch_size, output_dir):
-    """阶段二完整流水线: 画面提示词优化 → 视频提示词生成"""
-    for path in [storyboard_path, raw_prompt_path]:
+    """阶段二完整流水线: 画面提示词优化 → 视频提示词生成（支持多文件批量处理）"""
+    for path in storyboard_paths:
         if not os.path.exists(path):
             _abort_cli(f"文件不存在: {_format_cli_path(path)}")
 
+    # 构建 (storyboard, raw_prompt) 配对
+    if raw_prompt_paths:
+        if len(raw_prompt_paths) != len(storyboard_paths):
+            _abort_cli(
+                f"--raw-prompts 数量({len(raw_prompt_paths)})与 "
+                f"--storyboard 数量({len(storyboard_paths)})不匹配，必须一一对应"
+            )
+        pairs = list(zip(storyboard_paths, raw_prompt_paths))
+    else:
+        pairs = []
+        for sb_path in storyboard_paths:
+            txt_files = scan_storyboard_prompt_files(sb_path)
+            if len(txt_files) == 0:
+                _abort_cli(
+                    f"未找到 {os.path.dirname(sb_path)} 目录下的\"画面提示词*.txt\"文件，"
+                    f"请用 --raw-prompts 手动指定"
+                )
+            if len(txt_files) > 1:
+                _abort_cli(
+                    f"{os.path.dirname(sb_path)} 目录下存在 {len(txt_files)} 个"
+                    f"\"画面提示词*.txt\"文件，无法自动确定配对，请用 --raw-prompts 手动指定"
+                )
+            pairs.append((sb_path, txt_files[0]))
+
+    multi_file = len(pairs) > 1
     bundle = get_client_bundle()
-    run_postprocess_pipeline_for_storyboard(
-        bundle=bundle,
-        storyboard_path=storyboard_path,
-        raw_prompt_path=raw_prompt_path,
-        optimize_prompt_name=optimize_prompt,
-        video_prompt_name=video_prompt_name,
-        batch_size=batch_size,
-        unattended=True,
-        output_dir=output_dir,
-    )
+
+    for i, (storyboard_path, raw_prompt_path) in enumerate(pairs, start=1):
+        stem = os.path.basename(os.path.dirname(os.path.abspath(storyboard_path)))
+        if multi_file:
+            console.print(
+                f"\n[bold cyan]━━━ [{i}/{len(pairs)}] {stem} ━━━[/]"
+            )
+
+        run_postprocess_pipeline_for_storyboard(
+            bundle=bundle,
+            storyboard_path=storyboard_path,
+            raw_prompt_path=raw_prompt_path,
+            optimize_prompt_name=optimize_prompt,
+            video_prompt_name=video_prompt_name,
+            batch_size=batch_size,
+            unattended=True,
+            output_dir=output_dir if not multi_file else None,
+        )
+
+    if multi_file:
+        console.print(f"\n[bold green]✓ 全部完成！共处理 {len(pairs)} 个文件[/]")
 
 
 if __name__ == "__main__":

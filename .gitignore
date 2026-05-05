@@ -7,6 +7,7 @@ venv/
 
 # Local configuration
 .env
+*.env
 
 # Local working data
 output/
@@ -15,6 +16,9 @@ input/*
 
 # Build and archive artifacts
 *.zip
+
+# Playwright test artifacts
+.playwright-cli/
 
 # Claude Code
 .claude/

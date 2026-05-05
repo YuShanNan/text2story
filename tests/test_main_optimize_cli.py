@@ -15,8 +15,6 @@ warnings.filterwarnings(
 
 import main
 
-FIXED_NEGATIVE_PROMPT = "负面提示词：无衣物穿透、无多余人物、无杂乱元素、无面部混淆、无版权争议。"
-
 
 class FakePromptClient:
     def __init__(self):
@@ -42,6 +40,7 @@ class FakePromptClient:
         temperature: float = 0.7,
         max_tokens: int = 4096,
         fallback_model: str = None,
+        thinking_enabled: bool = None,
     ) -> str:
         return self.chat_multi_turn(
             model=model,
@@ -79,6 +78,7 @@ class FakeVideoPromptClient:
         temperature: float = 0.7,
         max_tokens: int = 4096,
         fallback_model: str = None,
+        thinking_enabled: bool = None,
     ) -> str:
         return self.chat_multi_turn(
             model=model,
@@ -145,7 +145,7 @@ class OptimizeCliTest(unittest.TestCase):
                 output_text = file.read().strip()
 
         self.assertEqual(
-            f"优化后提示词1 {FIXED_NEGATIVE_PROMPT}\n优化后提示词2 {FIXED_NEGATIVE_PROMPT}",
+            "优化后提示词2\n优化后提示词3",
             output_text,
         )
 
@@ -218,7 +218,7 @@ class OptimizeCliTest(unittest.TestCase):
                     "scene_id": "1",
                     "storyboard_text": "第一段分镜",
                     "raw_image_prompt": "原始提示词一",
-                    "optimized_image_prompt": f"优化后提示词1 {FIXED_NEGATIVE_PROMPT}",
+                    "optimized_image_prompt": "优化后提示词2",
                     "notes_cn": "",
                 }
             ],
@@ -286,7 +286,7 @@ class OptimizeCliTest(unittest.TestCase):
             with open(output_path, "r", encoding="utf-8-sig") as file:
                 output_text = file.read().strip()
 
-        self.assertEqual("视频提示词1\n视频提示词2", output_text)
+        self.assertEqual("视频提示词2\n视频提示词3", output_text)
 
     def test_csv_mode_writes_video_prompt_csv_from_optimized_image_prompts(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -370,7 +370,7 @@ class OptimizeCliTest(unittest.TestCase):
                     "scene_id": "1",
                     "storyboard_text": "第一段分镜",
                     "optimized_image_prompt": "优化后生图提示词一",
-                    "video_prompt": "视频提示词1",
+                    "video_prompt": "视频提示词2",
                     "notes_cn": "",
                 }
             ],

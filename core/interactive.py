@@ -401,6 +401,46 @@ def select_files(srt_files: list[str]) -> list[str]:
         return selected
 
 
+
+def select_storyboard_files(files: list[str]) -> list[str]:
+    """Multi-select storyboard files from output directory."""
+    console.print("[bold cyan]📂 扫描到以下分镜文件：[/]\n")
+    console.print("  [yellow]0[/] — 全部文件（依次处理）")
+    for i, f in enumerate(files, start=1):
+        rel = os.path.relpath(f, Config.OUTPUT_DIR)
+        console.print(f"  [yellow]{i}[/] — {rel}")
+    console.print()
+
+    while True:
+        answer = _execute_prompt(inquirer.text(
+            message="请输入文件编号（多选用逗号分隔，如 1,3,5；输入 0 选择全部）：",
+        )).strip()
+
+        if not answer:
+            console.print("[red]请输入至少一个编号[/]")
+            continue
+
+        if answer == "0":
+            console.print("[green]已选择全部文件[/]\n")
+            return list(files)
+
+        try:
+            indices = [int(x.strip()) for x in answer.split(",")]
+        except ValueError:
+            console.print("[red]输入格式有误，请输入数字编号[/]")
+            continue
+
+        invalid = [x for x in indices if x < 1 or x > len(files)]
+        if invalid:
+            console.print(f"[red]无效编号: {invalid}，有效范围 1~{len(files)}[/]")
+            continue
+
+        selected = [files[i - 1] for i in indices]
+        names = [os.path.relpath(f, Config.OUTPUT_DIR) for f in selected]
+        console.print(f"[green]已选择: {', '.join(names)}[/]\n")
+        return selected
+
+
 def select_mode() -> str:
     """交互式选择生成模式"""
     choice = _execute_prompt(inquirer.select(
@@ -1342,31 +1382,45 @@ def select_input_file(files: list[str], base_dir: str, label: str) -> str | None
         return selected
 
 
-def select_storyboard_and_raw_prompt_files() -> tuple[str, str] | tuple[None, None]:
+def select_storyboard_and_raw_prompt_files() -> list[tuple[str, str]]:
+    """Multi-select storyboard files and auto-pair with raw prompt files in same dir."""
     storyboard_files = scan_output_files("_storyboard")
     if not storyboard_files:
         console.print("[red]未找到分镜 TXT 文件，请先执行步骤 3[/]")
-        return None, None
+        return []
 
-    selected_storyboard = select_input_file(
-        storyboard_files, Config.OUTPUT_DIR, "分镜 TXT"
-    )
-    if not selected_storyboard:
-        return None, None
+    selected_storyboards = select_storyboard_files(storyboard_files)
+    if not selected_storyboards:
+        return []
 
-    txt_files = scan_storyboard_prompt_files(selected_storyboard)
-    if not txt_files:
-        console.print("[red]未找到同目录下的“画面提示词*.txt”文件[/]")
-        return None, None
+    pairs = []
+    for sb_path in selected_storyboards:
+        txt_files = scan_storyboard_prompt_files(sb_path)
+        if len(txt_files) == 0:
+            rel = os.path.relpath(sb_path, Config.OUTPUT_DIR)
+            _print_error(
+                console,
+                f"❌ 自动配对失败: {rel}",
+                '未找到同目录下的“画面提示词*.txt”文件',
+                "已跳过此文件。",
+            )
+            console.print()
+            continue
+        if len(txt_files) > 1:
+            rel = os.path.relpath(sb_path, Config.OUTPUT_DIR)
+            _print_error(
+                console,
+                f"❌ 自动配对失败: {rel}",
+                f'同目录下存在 {len(txt_files)} 个“画面提示词*.txt”文件，无法自动确定配对',
+                "请保留唯一一个画面提示词文件后重试。",
+            )
+            console.print()
+            continue
+        pairs.append((sb_path, txt_files[0]))
 
-    selected_raw_prompt = select_input_file(
-        txt_files, os.path.dirname(selected_storyboard), "原始画面提示词 TXT"
-    )
-    if not selected_raw_prompt:
-        return None, None
-
-    return selected_storyboard, selected_raw_prompt
-
+    if not pairs:
+        console.print("[red]没有可处理的文件对。[/]")
+    return pairs
 
 def select_storyboard_input_mode() -> str:
     return _execute_prompt(inquirer.select(
@@ -1975,8 +2029,8 @@ def _run_postprocess_pipeline_inner():
     bundle = get_client()
 
     console.print("[bold cyan]📂 步骤 4: 选择分镜与原始画面提示词文件[/]")
-    selected_storyboard, selected_raw_prompt = select_storyboard_and_raw_prompt_files()
-    if not selected_storyboard or not selected_raw_prompt:
+    pairs = select_storyboard_and_raw_prompt_files()
+    if not pairs:
         return
 
     console.print("[bold cyan]📝 步骤 5: 选择系统提示词模板[/]")
@@ -1995,12 +2049,76 @@ def _run_postprocess_pipeline_inner():
     else:
         console.print("[yellow]✓ 交互模式，每步完成后可预览/编辑/重新生成[/]\n")
 
-    run_postprocess_pipeline_for_storyboard(
-        bundle=bundle,
-        storyboard_path=selected_storyboard,
-        raw_prompt_path=selected_raw_prompt,
-        optimize_prompt_name=optimize_prompt_name,
-        video_prompt_name=video_prompt_name,
-        batch_size=10,
-        unattended=unattended,
-    )
+    total = len(pairs)
+    console.print(Panel(
+        f"[bold]共 {total} 个分镜文件待处理[/]",
+        title="✨ 开始后处理",
+        border_style="magenta",
+        padding=_panel_padding(console),
+    ))
+
+    all_results: list[tuple[str, list[tuple[str, str]]]] = []
+
+    for i, (storyboard_path, raw_prompt_path) in enumerate(pairs, start=1):
+        stem = os.path.basename(os.path.dirname(storyboard_path))
+        try:
+            results = run_postprocess_pipeline_for_storyboard(
+                bundle=bundle,
+                storyboard_path=storyboard_path,
+                raw_prompt_path=raw_prompt_path,
+                optimize_prompt_name=optimize_prompt_name,
+                video_prompt_name=video_prompt_name,
+                batch_size=10,
+                unattended=unattended,
+            )
+            all_results.append((storyboard_path, results))
+        except KeyboardInterrupt:
+            console.print("\n[bold yellow]⚠️ 用户中断操作，正在返回主菜单...[/]")
+            return
+        except Exception as e:
+            _print_error(
+                console,
+                f"❌ 处理失败: {stem}",
+                str(e),
+                "已跳过此文件，继续处理下一个。",
+            )
+            console.print()
+            all_results.append((storyboard_path, [("错误", str(e))]))
+
+    # 最终汇总
+    console.print()
+    console.print(Panel(
+        f"[bold green]全部完成！共处理 {len(all_results)} 个文件[/]",
+        title="🎉 处理完成",
+        border_style="green",
+        padding=_panel_padding(console),
+    ))
+
+    if _is_narrow_console(console):
+        rows = []
+        for storyboard_path, results in all_results:
+            stem = os.path.basename(os.path.dirname(storyboard_path))
+            for label, path in results:
+                rows.append((stem, f"{label}\n{_compact_path(path, console_obj=console)}"))
+        _print_key_value_summary("📊 最终汇总", rows, border_style="bright_green", console_obj=console)
+    else:
+        final_table = Table(
+            title="📊 最终汇总",
+            border_style="bright_green",
+            show_lines=True,
+            box=box.SIMPLE_HEAVY,
+        )
+        final_table.add_column("文件", style="cyan", width=25)
+        final_table.add_column("步骤", style="white", width=15)
+        final_table.add_column("输出路径", style="dim")
+
+        for storyboard_path, results in all_results:
+            stem = os.path.basename(os.path.dirname(storyboard_path))
+            for j, (label, path) in enumerate(results):
+                file_col = stem if j == 0 else ""
+                final_table.add_row(file_col, label, path)
+
+        console.print(final_table)
+    console.print()
+
+

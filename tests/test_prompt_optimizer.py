@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from core.prompt_optimizer import PromptOptimizer, FIXED_NEGATIVE_PROMPT
+from core.prompt_optimizer import PromptOptimizer
 
 
 def _collect_batch(generator):
@@ -72,7 +72,7 @@ class PromptOptimizerTest(unittest.TestCase):
             client = C()
             opt = PromptOptimizer(client=client, model="m", prompts_dir=os.path.join(tmp_dir, "prompts"))
             r = _collect_batch(opt.optimize_files_batch(storyboard_path=sb, raw_prompt_path=rp))
-        self.assertEqual(f"OA {FIXED_NEGATIVE_PROMPT}\nOB {FIXED_NEGATIVE_PROMPT}", r)
+        self.assertEqual("OA\nOB", r)
         self.assertEqual(1, len(client.calls))
 
     def test_loads_default_prompt_with_back_facing_rule(self):
@@ -109,32 +109,7 @@ class PromptOptimizerTest(unittest.TestCase):
             opt = PromptOptimizer(client=FakeClient(return_value="主体"),
                                    model="m", prompts_dir=os.path.join(tmp_dir, "prompts"))
             r = _collect_batch(opt.optimize_files_batch(storyboard_path=sb, raw_prompt_path=rp))
-        self.assertEqual(f"主体 {FIXED_NEGATIVE_PROMPT}", r)
-
-    def test_sanitizes_phone_interface(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            self._make_prompts_dir(tmp_dir)
-            opt = PromptOptimizer(
-                client=FakeClient(return_value="[我]右手拇指按在手机拨号键上，前景是号码界面，后景是[我]紧绷的下颌线条。"),
-                model="m", prompts_dir=os.path.join(tmp_dir, "prompts"))
-            r = _collect_batch(opt.optimize_files_batch(rows=[
-                {"scene_id": "1", "storyboard_text": "我拨通电话。", "raw_image_prompt": "P"}]))
-        self.assertNotIn("拨号键", r)
-        self.assertNotIn("号码界面", r)
-        self.assertNotIn("下颌线条", r)
-        self.assertIn("手持旧手机", r)
-
-    def test_drops_calendar_visualization(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            self._make_prompts_dir(tmp_dir)
-            opt = PromptOptimizer(
-                client=FakeClient(return_value="墙上挂着一本老式日历，光线落在日历翻页边缘形成细碎阴影。"),
-                model="m", prompts_dir=os.path.join(tmp_dir, "prompts"))
-            r = _collect_batch(opt.optimize_files_batch(rows=[
-                {"scene_id": "1", "storyboard_text": "二零零五年八月十三日。", "raw_image_prompt": "P"}]))
-        self.assertNotIn("日历", r)
-        self.assertNotIn("翻页", r)
-        self.assertEqual(FIXED_NEGATIVE_PROMPT, r)
+        self.assertEqual("主体", r)
 
     def test_builds_rows_from_files(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -164,7 +139,7 @@ class PromptOptimizerTest(unittest.TestCase):
             opt = PromptOptimizer(client=FakeClient(), model="m", prompts_dir=os.path.join(tmp_dir, "prompts"))
             r = _collect_batch(opt.optimize_files_batch(rows=[
                 {"scene_id": "1", "storyboard_text": "A", "raw_image_prompt": "P"}]))
-        self.assertEqual(f"优化后提示词1 {FIXED_NEGATIVE_PROMPT}", r)
+        self.assertEqual("优化后提示词1", r)
 
     def test_batch_single_turn(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -15,7 +15,6 @@ warnings.filterwarnings(
 import main
 from core.storyboard_generator import StoryboardGenerationUnstableError
 
-FIXED_NEGATIVE_PROMPT = "负面提示词：无衣物穿透、无多余人物、无杂乱元素、无面部混淆、无版权争议。"
 
 
 class StageAwareFakeClient:
@@ -193,7 +192,7 @@ class MainPipelineCliTest(unittest.TestCase):
                 video_text = file.read().strip()
 
             self.assertEqual(
-                f"优化结果1 {FIXED_NEGATIVE_PROMPT}\n优化结果2 {FIXED_NEGATIVE_PROMPT}",
+                "优化结果1\n优化结果2",
                 optimized_text,
             )
             self.assertEqual("视频结果1\n视频结果2", video_text)

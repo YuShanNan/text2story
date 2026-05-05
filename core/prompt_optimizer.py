@@ -1,129 +1,8 @@
-import re
-
-from utils.file_utils import load_prompt, read_file, read_non_empty_lines, normalize_whitespace
+from utils.file_utils import load_prompt, read_non_empty_lines
 from utils.logger import get_logger
 
 DEFAULT_BATCH_SIZE = 10
-NEGATIVE_PROMPT_PREFIX = "负面提示词："
-FIXED_NEGATIVE_PROMPT = (
-    "负面提示词：无衣物穿透、无多余人物、无杂乱元素、无面部混淆、无版权争议。"
-)
 logger = get_logger(__name__)
-
-# 预编译正则，避免每次调用 _sanitize_optimized_prompt 时重复编译
-_FOREGROUND_BACKGROUND_PATTERNS = (
-    re.compile(r"(?:前景|后景)(?:是|为)?[^，。；;]*(?:手部|肩颈|下颌线|嘴唇|眼部|手机|按键|界面)[^，。；;]*[，。；;]?"),
-    re.compile(r"(?:前景|后景)[^，。；;]*(?:日历|床铺|墙面纹理|地板纹理)[^，。；;]*[，。；;]?"),
-)
-
-_DISALLOWED_WHEN_NOT_IN_STORYBOARD = {
-    "phone_interface": {
-        "storyboard_tokens": ("电话", "手机", "来电", "拨通", "拨打", "停机", "空号"),
-        "detail_tokens": ("按键", "拨号键", "拨号界面", "号码界面", "空号提示", "屏幕显示", "界面", "磨损", "掉漆"),
-        "replacement": "手持旧手机，目光看向手中旧手机",
-    },
-    "calendar_visualization": {
-        "storyboard_tokens": ("日期", "年月日", "年", "月", "日"),
-        "detail_tokens": ("日历", "翻页"),
-        "replacement": "",
-    },
-}
-
-_DETAIL_REMOVAL_TPL = r"[^，。；;]*<TOKEN>[^，。；;]*[，。；;]?"
-
-_SOUND_DETAIL_TOKENS = ("风声", "水声", "回声", "铃声", "脚步声", "布料摩擦声", "扬声器", "声音从")
-
-_PRECOMPILED_DETAIL_PATTERNS: dict[str, re.Pattern] = {}
-
-
-def _get_detail_pattern(token: str) -> re.Pattern:
-    pattern = _PRECOMPILED_DETAIL_PATTERNS.get(token)
-    if pattern is None:
-        pattern = re.compile(_DETAIL_REMOVAL_TPL.replace("<TOKEN>", re.escape(token)))
-        _PRECOMPILED_DETAIL_PATTERNS[token] = pattern
-    return pattern
-
-
-# 用于快速退出的关键字集合：如果 prompt 文本中不包含任何这些 token，则跳过 sanitize
-_SANITIZE_GUARD_TOKENS = frozenset(
-    ("前景", "后景", "按键", "拨号键", "界面", "日历", "翻页",
-     "风声", "水声", "回声", "铃声", "脚步声", "布料摩擦声", "扬声器", "声音从",
-     "手部", "肩颈", "下颌线", "嘴唇", "眼部", "手机",
-     "床铺", "墙面纹理", "地板纹理")
-)
-
-_COLLAPSE_RE_1 = re.compile(r"[，,]{2,}")
-_COLLAPSE_RE_2 = re.compile(r"[。；;]{2,}")
-_COLLAPSE_RE_3 = re.compile(r"[，,](?=[。；;])")
-_COLLAPSE_RE_4 = re.compile(r"^[，,。；;\s]+|[，,。；;\s]+$")
-
-
-def _normalize_optimized_prompt(text: str) -> str:
-    normalized = normalize_whitespace(text)
-    if not normalized:
-        return FIXED_NEGATIVE_PROMPT
-    if NEGATIVE_PROMPT_PREFIX in normalized:
-        return normalized
-    return f"{normalized} {FIXED_NEGATIVE_PROMPT}"
-
-
-def _split_prompt_and_negative(text: str) -> tuple[str, str]:
-    if NEGATIVE_PROMPT_PREFIX not in text:
-        return text, ""
-    prompt_text, negative_prompt = text.split(NEGATIVE_PROMPT_PREFIX, 1)
-    return prompt_text.strip(), f"{NEGATIVE_PROMPT_PREFIX}{negative_prompt.strip()}"
-
-
-def _collapse_prompt_text(text: str) -> str:
-    collapsed = _COLLAPSE_RE_1.sub("，", text)
-    collapsed = _COLLAPSE_RE_2.sub("。", collapsed)
-    collapsed = _COLLAPSE_RE_3.sub("", collapsed)
-    collapsed = _COLLAPSE_RE_4.sub("", collapsed)
-    return collapsed.strip()
-
-
-def _sanitize_optimized_prompt(text: str, storyboard_text: str) -> str:
-    prompt_text, negative_prompt = _split_prompt_and_negative(text)
-    if not prompt_text:
-        return text
-
-    # 快速退出：如果文本中不包含任何需要处理的关键字，直接跳过清理
-    if not any(token in prompt_text for token in _SANITIZE_GUARD_TOKENS):
-        sanitized = _collapse_prompt_text(prompt_text)
-        if negative_prompt:
-            return f"{sanitized} {negative_prompt}".strip()
-        return sanitized
-
-    sanitized = prompt_text
-
-    for pattern in _FOREGROUND_BACKGROUND_PATTERNS:
-        sanitized = pattern.sub("", sanitized)
-
-    replacement_insertions: list[str] = []
-    for rule in _DISALLOWED_WHEN_NOT_IN_STORYBOARD.values():
-        has_context = any(token in storyboard_text for token in rule["storyboard_tokens"])
-        for detail_token in rule["detail_tokens"]:
-            if detail_token in storyboard_text:
-                continue
-            sanitized, replacements = _get_detail_pattern(detail_token).subn("", sanitized)
-            if replacements and has_context and rule["replacement"]:
-                replacement_insertions.append(rule["replacement"])
-
-    for token in _SOUND_DETAIL_TOKENS:
-        sanitized = _get_detail_pattern(token).sub("", sanitized)
-
-    sanitized = _collapse_prompt_text(sanitized)
-
-    if replacement_insertions:
-        deduped = [r for r in dict.fromkeys(replacement_insertions) if r and r not in sanitized]
-        if deduped:
-            sanitized = _collapse_prompt_text(
-                "，".join(part for part in [sanitized, *deduped] if part)
-            )
-
-    if negative_prompt:
-        return f"{sanitized} {negative_prompt}".strip()
-    return sanitized
 
 
 class PromptOptimizer:
@@ -234,14 +113,8 @@ class PromptOptimizer:
             )
             messages.append({"role": "user", "content": confirm})
 
-        final_lines = []
-        for i, line in enumerate(all_lines):
-            sanitized = _sanitize_optimized_prompt(line, rows[i]["storyboard_text"])
-            normalized = _normalize_optimized_prompt(sanitized)
-            final_lines.append(normalized)
-
-        logger.info("批量画面提示词优化完成 (%s 条)", len(final_lines))
-        yield "\n".join(final_lines)
+        logger.info("批量画面提示词优化完成 (%s 条)", len(all_lines))
+        yield "\n".join(all_lines)
 
     def _build_file_rows(
         self,
