@@ -107,7 +107,9 @@ pause
 exit /b 1
 
 :python_found
-for /f "tokens=*" %%i in ('%PYTHON_CMD% --version 2^>^&1') do set "PYTHON_VER=%%i"
+%PYTHON_CMD% --version > "%TEMP%\pyver.txt" 2>&1
+set /p PYTHON_VER= < "%TEMP%\pyver.txt"
+del "%TEMP%\pyver.txt"
 echo        找到 %PYTHON_VER% (命令: %PYTHON_CMD%)
 echo        [模式] 单模型 OpenAI 兼容接口
 
@@ -136,10 +138,10 @@ call "%PROJECT_DIR%venv\Scripts\activate.bat"
 
 :: 安装 Python 依赖
 echo        正在检查并安装 Python 依赖...
-call pip install -r requirements.txt --quiet 2>nul
+pip install -r requirements.txt --quiet 2>nul
 if %ERRORLEVEL% neq 0 (
     echo        首次安装依赖（可能需要网络连接）...
-    call pip install -r requirements.txt
+    pip install -r requirements.txt
     if !ERRORLEVEL! neq 0 (
         echo [错误] Python 依赖安装失败！
         echo        请检查网络连接或者使用镜像源:
@@ -238,7 +240,20 @@ goto :eof
 
 :refresh_path
 echo        正在刷新 PATH 环境变量...
-for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul') do set "SYSTEM_PATH=%%b"
-for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v Path 2^>nul') do set "USER_PATH=%%b"
-set "PATH=!SYSTEM_PATH!;!USER_PATH!"
+reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path > "%TEMP%\syspath.txt" 2>nul
+set "SYSTEM_PATH="
+for /f "tokens=2*" %%a in ('type "%TEMP%\syspath.txt"') do set "SYSTEM_PATH=%%b"
+reg query "HKCU\Environment" /v Path > "%TEMP%\userpath.txt" 2>nul
+set "USER_PATH="
+for /f "tokens=2*" %%a in ('type "%TEMP%\userpath.txt"') do set "USER_PATH=%%b"
+del "%TEMP%\syspath.txt" "%TEMP%\userpath.txt" 2>nul
+if defined SYSTEM_PATH (
+    if defined USER_PATH (
+        set "PATH=!SYSTEM_PATH!;!USER_PATH!"
+    ) else (
+        set "PATH=!SYSTEM_PATH!"
+    )
+) else if defined USER_PATH (
+    set "PATH=!USER_PATH!"
+)
 goto :eof
