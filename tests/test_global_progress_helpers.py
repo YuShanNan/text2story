@@ -9,7 +9,16 @@ from core.interactive import (
 )
 
 
+class FakePingClient:
+    def chat(self, **kwargs):
+        return "pong"
+
+
 class FakeCorrector:
+    client = FakePingClient()
+    model = "test"
+    max_chunk_size = 3000
+
     def iter_correct_progress(self, srt_content: str, prompt_name: str = "default"):
         yield {
             "content": "修正结果1",
@@ -28,6 +37,10 @@ class FakeCorrector:
 
 
 class FakeStoryboardGenerator:
+    client = FakePingClient()
+    model = "test"
+    max_chunk_size = 3000
+
     def iter_generate_progress(self, text: str, prompt_name: str = "default"):
         yield {
             "content": "分镜结果1",
@@ -42,43 +55,6 @@ class FakeStoryboardGenerator:
             "chunk_total": 2,
             "chunk_elapsed_seconds": 2.2,
             "total_elapsed_seconds": 3.3,
-        }
-
-
-class FakeNormalizedStoryboardGenerator:
-    def iter_generate_progress(self, text: str, prompt_name: str = "default"):
-        yield {
-            "content": "原始结果1",
-            "normalized_content": "1. 第一镜\n2. 第二镜",
-            "source_chunk": "片段一",
-            "chunk_index": 1,
-            "chunk_total": 2,
-            "chunk_elapsed_seconds": 1.1,
-            "total_elapsed_seconds": 1.1,
-        }
-        yield {
-            "content": "原始结果2",
-            "normalized_content": "1. 第三镜",
-            "source_chunk": "片段二",
-            "chunk_index": 2,
-            "chunk_total": 2,
-            "chunk_elapsed_seconds": 2.2,
-            "total_elapsed_seconds": 3.3,
-        }
-
-
-class FakeDegradedStoryboardGenerator:
-    def iter_generate_progress(self, text: str, prompt_name: str = "default"):
-        yield {
-            "content": "原始结果1",
-            "normalized_content": "1. 第一镜\n2. 第二镜",
-            "source_chunk": "片段一",
-            "chunk_index": 1,
-            "chunk_total": 1,
-            "chunk_elapsed_seconds": 1.1,
-            "total_elapsed_seconds": 1.1,
-            "degraded_fallback": True,
-            "warning_message": "第 1/1 段分镜未生成出稳定结果，已在达到 MAX_RETRY=5 后自动降级为保守分镜输出。",
         }
 
 
@@ -155,38 +131,37 @@ class GlobalProgressHelpersTest(unittest.TestCase):
             console_obj=console,
         )
 
-        self.assertEqual("1. test", result)
+        self.assertEqual("分镜结果1\n分镜结果2", result)
         output = console.export_text()
         self.assertNotIn("第 2/2 段分镜生成完成", output)
         self.assertNotIn("本段用时", output)
         self.assertNotIn("累计用时", output)
 
-    def test_run_storyboard_generation_with_progress_uses_normalized_chunks(self):
+    def test_run_storyboard_generation_with_progress_concatenates_raw_output(self):
         console = Console(record=True)
 
         result = run_storyboard_generation_with_progress(
-            generator=FakeNormalizedStoryboardGenerator(),
+            generator=FakeStoryboardGenerator(),
             text="test",
             prompt_name="default",
             console_obj=console,
         )
 
-        self.assertEqual("1. 第一镜\n2. 第二镜\n3. 第三镜", result)
+        self.assertEqual("分镜结果1\n分镜结果2", result)
 
-    def test_run_storyboard_generation_with_progress_prints_degradation_warning(self):
+    def test_run_storyboard_generation_with_progress_no_degradation_warning(self):
         console = Console(record=True)
 
         result = run_storyboard_generation_with_progress(
-            generator=FakeDegradedStoryboardGenerator(),
+            generator=FakeStoryboardGenerator(),
             text="test",
             prompt_name="default",
             console_obj=console,
+            return_diagnostics=True,
         )
 
-        self.assertEqual("1. 第一镜\n2. 第二镜", result)
-        output = console.export_text()
-        self.assertIn("分镜已降级输出", output)
-        self.assertIn("MAX_RETRY=5", output)
+        self.assertEqual("分镜结果1\n分镜结果2", result["text"])
+        self.assertEqual([], result["degraded_warnings"])
 
     def test_run_prompt_generation_with_progress_prints_stage_timing_summary(self):
         console = Console(record=True)

@@ -26,7 +26,6 @@ from core.interactive import (
     scan_storyboard_optimized_image_prompt_files,
     scan_storyboard_prompt_files,
 )
-from core.storyboard_generator import StoryboardGenerationUnstableError
 from rich.console import Console
 
 
@@ -131,18 +130,17 @@ class InteractiveMenuTest(unittest.TestCase):
     def test_run_single_step_prints_user_friendly_storyboard_error(self):
         run_inner = patch(
             "core.interactive._run_single_step_inner",
-            side_effect=StoryboardGenerationUnstableError("分镜生成失败"),
+            side_effect=RuntimeError("分镜生成失败"),
         ).start()
-        print_error = patch("core.interactive._print_error").start()
+        runtime_failure = patch("core.interactive._print_runtime_failure").start()
         self.addCleanup(patch.stopall)
 
         run_single_step()
 
         run_inner.assert_called_once()
-        print_error.assert_called_once()
-        self.assertEqual("❌ 分镜生成失败", print_error.call_args.args[1])
-        self.assertEqual("分镜生成失败", print_error.call_args.args[2])
-        self.assertIn("MAX_RETRY", print_error.call_args.args[3])
+        runtime_failure.assert_called_once()
+        self.assertEqual("❌ 单步执行失败", runtime_failure.call_args.args[0])
+        self.assertEqual("分镜生成失败", str(runtime_failure.call_args.args[1]))
 
     def test_run_postprocess_pipeline_prints_runtime_error_panel(self):
         run_inner = patch(

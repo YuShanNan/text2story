@@ -21,11 +21,7 @@ from config import Config
 from api.client_factory import create_clients, ClientBundle
 from core.srt_converter import convert_srt_to_txt
 from core.srt_corrector import SrtCorrector, batch_srt_blocks, split_srt_blocks
-from core.storyboard_generator import (
-    StoryboardGenerator,
-    StoryboardGenerationUnstableError,
-    normalize_storyboard_output,
-)
+from core.storyboard_generator import StoryboardGenerator
 from core.prompt_generator import PromptGenerator, parse_storyboard
 from core.prompt_optimizer import PromptOptimizer
 from core.video_prompt_generator import VideoPromptGenerator
@@ -98,10 +94,6 @@ def _print_error(console_obj: Console | None, title: str, message: str, hint: st
     )
 
 
-def _storyboard_failure_hint() -> str:
-    return "请检查 .env 中的 MAX_RETRY、模型配置或分镜提示词模板后重试。"
-
-
 def _print_runtime_failure(title: str, error: RuntimeError, hint: str | None = None):
     hint = hint or "请修正配置、输入文件或提示词后重试。"
     _print_error(console, title, str(error), hint)
@@ -112,30 +104,6 @@ def _print_runtime_failure(title: str, error: RuntimeError, hint: str | None = N
             time.sleep(1)
     except KeyboardInterrupt:
         pass
-
-
-def _print_storyboard_degradation_summary(
-    console_obj: Console | None,
-    warnings: list[str],
-):
-    if not warnings:
-        return
-
-    console_obj = console_obj or console
-    body = "\n".join(f"- {message}" for message in warnings)
-    body += "\n[dim]已输出保守分镜结果；如需更强的合并效果，可调整提示词模板或 MAX_RETRY 后重试。[/]"
-    console_obj.print(
-        Panel(
-            body,
-            title="⚠ 分镜已降级输出",
-            border_style="yellow",
-            padding=_panel_padding(console_obj),
-        )
-    )
-
-
-class StageOneStoryboardPassError(RuntimeError):
-    """Raised when the storyboard step fails during a stage-one pipeline pass."""
 
 
 def _print_key_value_summary(
@@ -760,7 +728,7 @@ def _check_model_connectivity(
             result = client.chat(
                 model=model,
                 system_prompt="",
-                user_content="ping",
+                user_content='收到请回复"我是DeepSeek"',
                 max_tokens=50,
                 temperature=0,
                 thinking_enabled=False,
@@ -824,13 +792,12 @@ def run_storyboard_generation_with_progress(
 ) -> str | dict[str, object]:
     console_obj = console_obj or console
     _check_model_connectivity(generator.client, generator.model, console_obj)
-    storyboard_items = []
-    degraded_warnings = []
 
     from utils.file_utils import split_text
     chunks = split_text(text, generator.max_chunk_size)
     chunk_total = len(chunks)
 
+    result_parts = []
     with suppress_console_logs(), _create_step_progress(console_obj) as progress:
         task_id = progress.add_task(
             "分镜生成",
@@ -841,16 +808,7 @@ def run_storyboard_generation_with_progress(
             total_elapsed="0.0s",
         )
         for event in generator.iter_generate_progress(text, prompt_name):
-            for line in event["normalized_content"].splitlines():
-                stripped = line.strip()
-                if not stripped:
-                    continue
-                if stripped[0].isdigit() and ". " in stripped:
-                    storyboard_items.append(stripped.split(". ", 1)[1])
-                else:
-                    storyboard_items.append(stripped)
-            if event.get("degraded_fallback") and event.get("warning_message"):
-                degraded_warnings.append(event["warning_message"])
+            result_parts.append(event["content"])
             progress.update(
                 task_id,
                 completed=event["chunk_index"],
@@ -859,15 +817,9 @@ def run_storyboard_generation_with_progress(
                 total_elapsed=_format_elapsed_seconds(event["total_elapsed_seconds"]),
             )
 
-    result_text = "\n".join(
-        f"{index}. {item}" for index, item in enumerate(storyboard_items, start=1)
-    )
-    _print_storyboard_degradation_summary(console_obj, degraded_warnings)
+    result_text = "\n".join(result_parts)
     if return_diagnostics:
-        return {
-            "text": result_text,
-            "degraded_warnings": degraded_warnings,
-        }
+        return {"text": result_text, "degraded_warnings": []}
     return result_text
 
 
@@ -1005,60 +957,21 @@ def run_pipeline_for_file(
     ))
 
     saved_files = []
-    rerun_reason = None
-    rerun_attempted = False
-    final_pass = None
 
-    for pass_index in range(1, 3):
-        if pass_index > 1:
-            rerun_attempted = True
-            body = (
-                f"[bold]检测到首轮阶段一分镜不稳定，正在从原始 SRT 重新修正并重跑一遍。[/]\n"
-                f"文件: {rel_name}"
-            )
-            if rerun_reason:
-                body += f"\n[dim]触发原因: {rerun_reason}[/]"
-            console.print(
-                Panel(
-                    body,
-                    title="🔄 自动重跑阶段一",
-                    border_style="yellow",
-                    padding=_panel_padding(console),
-                )
-            )
+    pass_result = _run_stage_one_pass(
+        bundle=bundle,
+        srt_path=srt_path,
+        stem=stem,
+        out_dir=out_dir,
+        correction_prompt=correction_prompt,
+        storyboard_prompt=storyboard_prompt,
+        unattended=unattended,
+    )
 
-        try:
-            pass_result = _run_stage_one_pass(
-                bundle=bundle,
-                srt_path=srt_path,
-                stem=stem,
-                out_dir=out_dir,
-                correction_prompt=correction_prompt,
-                storyboard_prompt=storyboard_prompt,
-                unattended=unattended,
-            )
-        except StageOneStoryboardPassError as e:
-            rerun_reason = str(e)
-            if pass_index < 2:
-                continue
-            raise RuntimeError(
-                f"已从原始 SRT 重新修正并重跑一遍，但分镜仍失败：{e}"
-            ) from e.__cause__
+    if pass_result["should_stop"]:
+        return pass_result["saved_files"]
 
-        if pass_result["should_stop"]:
-            return pass_result["saved_files"]
-
-        if pass_result["storyboard_warnings"] and pass_index < 2:
-            rerun_reason = pass_result["storyboard_warnings"][0]
-            continue
-
-        final_pass = pass_result
-        break
-
-    if final_pass is None:
-        raise RuntimeError("阶段一重跑后未获得可用结果。")
-
-    saved_files = final_pass["saved_files"]
+    saved_files = pass_result["saved_files"]
 
     if rerun_attempted:
         if final_pass["storyboard_warnings"]:
@@ -1183,25 +1096,13 @@ def _run_stage_one_pass(
         max_chunk_size=Config.MAX_CHUNK_SIZE,
     )
     sb_path = os.path.join(out_dir, f"{stem}_storyboard.txt")
-    storyboard_warnings = []
 
-    def render_storyboard() -> str:
-        nonlocal storyboard_warnings
-        try:
-            storyboard_result = run_storyboard_generation_with_progress(
-                generator=sb_generator,
-                text=corrected_text,
-                prompt_name=storyboard_prompt,
-                console_obj=console,
-                return_diagnostics=True,
-            )
-        except RuntimeError as e:
-            raise StageOneStoryboardPassError(str(e)) from e
-
-        storyboard_warnings = list(storyboard_result["degraded_warnings"])
-        return storyboard_result["text"]
-
-    storyboard_text = render_storyboard()
+    storyboard_text = run_storyboard_generation_with_progress(
+        generator=sb_generator,
+        text=corrected_text,
+        prompt_name=storyboard_prompt,
+        console_obj=console,
+    )
     write_file(sb_path, storyboard_text)
     console.print(f"[green]✓ 完成: {sb_path}[/]")
     saved_files.append(("分镜脚本", sb_path))
@@ -1212,10 +1113,15 @@ def _run_stage_one_pass(
             return {
                 "saved_files": saved_files,
                 "should_stop": True,
-                "storyboard_warnings": storyboard_warnings,
+                "storyboard_warnings": [],
             }
         while review == "retry":
-            storyboard_text = render_storyboard()
+            storyboard_text = run_storyboard_generation_with_progress(
+                generator=sb_generator,
+                text=corrected_text,
+                prompt_name=storyboard_prompt,
+                console_obj=console,
+            )
             write_file(sb_path, storyboard_text)
             console.print(f"[green]✓ 重新生成完成: {sb_path}[/]")
             review = step_review(sb_path, "AI 分镜生成")
@@ -1223,13 +1129,13 @@ def _run_stage_one_pass(
                 return {
                     "saved_files": saved_files,
                     "should_stop": True,
-                    "storyboard_warnings": storyboard_warnings,
+                    "storyboard_warnings": [],
                 }
 
     return {
         "saved_files": saved_files,
         "should_stop": False,
-        "storyboard_warnings": storyboard_warnings,
+        "storyboard_warnings": [],
     }
 
 
@@ -1463,15 +1369,6 @@ def run_single_step():
     """单步执行模式：选择从某一步开始执行"""
     try:
         _run_single_step_inner()
-    except StoryboardGenerationUnstableError as e:
-        _print_error(console, "❌ 分镜生成失败", str(e), _storyboard_failure_hint())
-        console.print("\n[dim]按 Ctrl+C 返回主菜单[/]")
-        try:
-            import time
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            pass
     except RuntimeError as e:
         _print_runtime_failure("❌ 单步执行失败", e)
     except KeyboardInterrupt:

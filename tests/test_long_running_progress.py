@@ -93,7 +93,7 @@ class LongRunningProgressTest(unittest.TestCase):
         self.assertEqual("结果1", events[0]["content"])
         self.assertEqual("结果2", events[1]["content"])
 
-    def test_storyboard_generator_normalizes_each_chunk_before_combining(self):
+    def test_storyboard_generator_passes_output_directly(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             prompts_dir = os.path.join(tmp_dir, "prompts", "storyboard")
             os.makedirs(prompts_dir, exist_ok=True)
@@ -127,7 +127,7 @@ class LongRunningProgressTest(unittest.TestCase):
             result,
         )
 
-    def test_storyboard_generator_retries_when_chunk_would_fallback_to_source_lines(self):
+    def test_storyboard_generator_uses_first_response_without_retry(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             prompts_dir = os.path.join(tmp_dir, "prompts", "storyboard")
             os.makedirs(prompts_dir, exist_ok=True)
@@ -136,8 +136,8 @@ class LongRunningProgressTest(unittest.TestCase):
 
             client = ScriptedClient(
                 [
-                    "完全不相干的错误输出",
-                    "1. 第一行第二行\n2. 第三行",
+                    "第一次输出就直接使用",
+                    "这个不会被用到",
                 ]
             )
             generator = StoryboardGenerator(
@@ -149,12 +149,11 @@ class LongRunningProgressTest(unittest.TestCase):
 
             events = list(generator.iter_generate_progress("第一行\n第二行\n第三行", "default"))
 
-        self.assertEqual(2, client.call_count)
+        self.assertEqual(1, client.call_count)
         self.assertEqual(1, len(events))
-        self.assertEqual("1. 第一行第二行\n2. 第三行", events[0]["content"])
-        self.assertEqual("1. 第一行第二行\n2. 第三行", events[0]["normalized_content"])
+        self.assertEqual("第一次输出就直接使用", events[0]["content"])
 
-    def test_storyboard_generator_honors_unlimited_retry_when_max_retry_is_zero(self):
+    def test_storyboard_generator_no_retry_on_any_output(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             prompts_dir = os.path.join(tmp_dir, "prompts", "storyboard")
             os.makedirs(prompts_dir, exist_ok=True)
@@ -163,11 +162,7 @@ class LongRunningProgressTest(unittest.TestCase):
 
             client = ScriptedClient(
                 [
-                    "完全不相干的错误输出",
-                    "完全不相干的错误输出",
-                    "完全不相干的错误输出",
-                    "完全不相干的错误输出",
-                    "1. 第一行第二行\n2. 第三行",
+                    "任意输出都会被接受",
                 ]
             )
             client.max_retry = 0
@@ -180,11 +175,11 @@ class LongRunningProgressTest(unittest.TestCase):
 
             events = list(generator.iter_generate_progress("第一行\n第二行\n第三行", "default"))
 
-        self.assertEqual(5, client.call_count)
+        self.assertEqual(1, client.call_count)
         self.assertEqual(1, len(events))
-        self.assertEqual("1. 第一行第二行\n2. 第三行", events[0]["normalized_content"])
+        self.assertEqual("任意输出都会被接受", events[0]["content"])
 
-    def test_storyboard_generator_returns_degraded_event_when_retries_exhausted(self):
+    def test_storyboard_generator_no_degraded_fallback_keys(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             prompts_dir = os.path.join(tmp_dir, "prompts", "storyboard")
             os.makedirs(prompts_dir, exist_ok=True)
@@ -193,9 +188,7 @@ class LongRunningProgressTest(unittest.TestCase):
 
             client = ScriptedClient(
                 [
-                    "完全不相干的错误输出",
-                    "完全不相干的错误输出",
-                    "完全不相干的错误输出",
+                    "任意输出",
                 ]
             )
             client.max_retry = 3
@@ -208,11 +201,10 @@ class LongRunningProgressTest(unittest.TestCase):
 
             events = list(generator.iter_generate_progress("第一行\n第二行\n第三行", "default"))
 
-        self.assertEqual(3, client.call_count)
+        self.assertEqual(1, client.call_count)
         self.assertEqual(1, len(events))
-        self.assertTrue(events[0]["degraded_fallback"])
-        self.assertIn("MAX_RETRY=3", events[0]["warning_message"])
-        self.assertEqual("1. 第一行\n2. 第二行\n3. 第三行", events[0]["normalized_content"])
+        self.assertNotIn("degraded_fallback", events[0])
+        self.assertNotIn("warning_message", events[0])
 
     def test_prompt_generator_yields_scene_progress_events_for_both_modes(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -23,7 +23,7 @@ class StageOneRerunTest(unittest.TestCase):
             file.write(content)
         return content
 
-    def test_run_pipeline_for_file_reruns_after_storyboard_degradation(self):
+    def test_run_pipeline_for_file_single_pass_produces_all_outputs(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             input_dir = os.path.join(tmp_dir, "input")
             output_dir = os.path.join(tmp_dir, "output")
@@ -37,19 +37,10 @@ class StageOneRerunTest(unittest.TestCase):
 
             with (
                 patch("core.interactive.Config.INPUT_DIR", input_dir),
-                patch("core.interactive.run_srt_correction_with_progress", side_effect=[srt_content, srt_content]) as correct,
+                patch("core.interactive.run_srt_correction_with_progress", return_value=srt_content) as correct,
                 patch(
                     "core.interactive.run_storyboard_generation_with_progress",
-                    side_effect=[
-                        {
-                            "text": "1. 第一轮保守分镜",
-                            "degraded_warnings": ["第 1/1 段分镜已降级"],
-                        },
-                        {
-                            "text": "1. 第二轮稳定分镜",
-                            "degraded_warnings": [],
-                        },
-                    ],
+                    return_value="1. 分镜结果",
                 ) as storyboard,
             ):
                 results = run_pipeline_for_file(
@@ -63,11 +54,11 @@ class StageOneRerunTest(unittest.TestCase):
                     output_dir=output_dir,
                 )
 
-            self.assertEqual(2, correct.call_count)
-            self.assertEqual(2, storyboard.call_count)
+            self.assertEqual(1, correct.call_count)
+            self.assertEqual(1, storyboard.call_count)
             storyboard_path = os.path.join(output_dir, "demo_storyboard.txt")
             with open(storyboard_path, "r", encoding="utf-8-sig") as file:
-                self.assertEqual("1. 第二轮稳定分镜", file.read().strip())
+                self.assertEqual("1. 分镜结果", file.read().strip())
             self.assertEqual(
                 [
                     ("SRT 修正", os.path.join(output_dir, "demo_corrected.srt")),
@@ -77,7 +68,7 @@ class StageOneRerunTest(unittest.TestCase):
                 results,
             )
 
-    def test_run_pipeline_for_file_reruns_once_then_raises_if_storyboard_still_fails(self):
+    def test_run_pipeline_for_file_propagates_storyboard_error_immediately(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             input_dir = os.path.join(tmp_dir, "input")
             output_dir = os.path.join(tmp_dir, "output")
@@ -91,16 +82,13 @@ class StageOneRerunTest(unittest.TestCase):
 
             with (
                 patch("core.interactive.Config.INPUT_DIR", input_dir),
-                patch("core.interactive.run_srt_correction_with_progress", side_effect=[srt_content, srt_content]) as correct,
+                patch("core.interactive.run_srt_correction_with_progress", return_value=srt_content) as correct,
                 patch(
                     "core.interactive.run_storyboard_generation_with_progress",
-                    side_effect=[
-                        RuntimeError("第一次分镜失败"),
-                        RuntimeError("第二次分镜失败"),
-                    ],
+                    side_effect=RuntimeError("分镜生成失败"),
                 ) as storyboard,
             ):
-                with self.assertRaisesRegex(RuntimeError, "已从原始 SRT 重新修正并重跑一遍"):
+                with self.assertRaisesRegex(RuntimeError, "分镜生成失败"):
                     run_pipeline_for_file(
                         bundle=bundle,
                         srt_path=input_path,
@@ -112,8 +100,8 @@ class StageOneRerunTest(unittest.TestCase):
                         output_dir=output_dir,
                     )
 
-            self.assertEqual(2, correct.call_count)
-            self.assertEqual(2, storyboard.call_count)
+            self.assertEqual(1, correct.call_count)
+            self.assertEqual(1, storyboard.call_count)
 
 
 if __name__ == "__main__":

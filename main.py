@@ -9,7 +9,7 @@ from config import Config
 from api.client_factory import create_clients, ClientBundle
 from core.srt_converter import convert_srt_to_txt
 from core.srt_corrector import SrtCorrector
-from core.storyboard_generator import StoryboardGenerator, StoryboardGenerationUnstableError
+from core.storyboard_generator import StoryboardGenerator
 from core.prompt_generator import PromptGenerator
 from core.prompt_optimizer import PromptOptimizer, DEFAULT_BATCH_SIZE
 from core.video_prompt_generator import VideoPromptGenerator
@@ -172,15 +172,12 @@ def storyboard(input_path, output_path, prompt_name):
     )
 
     text = read_file(input_path)
-    try:
-        result = run_storyboard_generation_with_progress(
-            generator=generator,
-            text=text,
-            prompt_name=prompt_name,
-            console_obj=console,
-        )
-    except StoryboardGenerationUnstableError as e:
-        _abort_cli(str(e), title="❌ 分镜生成失败")
+    result = run_storyboard_generation_with_progress(
+        generator=generator,
+        text=text,
+        prompt_name=prompt_name,
+        console_obj=console,
+    )
 
     if output_path is None:
         stem = _stem_from_output_file(input_path)
