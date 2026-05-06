@@ -542,6 +542,14 @@ def continue_run(storyboard_paths, raw_prompt_paths, optimize_prompt, video_prom
             console.print(f"\n[bold green]✓ 全部完成！共处理 {len(pairs)} 个文件[/]")
 
 
+@cli.command()
+def gui():
+    """启动 Flet 桌面 GUI"""
+    import flet as ft
+    from flet_ui.main import main as flet_main
+    ft.app(target=flet_main)
+
+
 if __name__ == "__main__":
     try:
         cli()
