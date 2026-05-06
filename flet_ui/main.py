@@ -9,19 +9,50 @@ def main(page: ft.Page):
 
     pipeline_page = PipelinePage(page)
 
-    tabs = ft.Tabs(
+    # Placeholder pages for tabs still under development
+    placeholder = lambda text: ft.Container(
+        content=ft.Text(text, size=14, color="#a0b8d8"),
+        alignment=ft.alignment.Alignment(0, 0),
+        expand=True,
+    )
+
+    tab_bar = ft.TabBar(
         selected_index=0,
         animation_duration=300,
         tabs=[
-            ft.Tab(text="流水线", content=pipeline_page),
-            ft.Tab(text="SRT 修正", content=ft.Text("SRT 修正 - 开发中")),
-            ft.Tab(text="分镜生成", content=ft.Text("分镜生成 - 开发中")),
-            ft.Tab(text="提示词生成", content=ft.Text("提示词生成 - 开发中")),
-            ft.Tab(text="画面优化", content=ft.Text("画面优化 - 开发中")),
-            ft.Tab(text="视频提示词", content=ft.Text("视频提示词 - 开发中")),
+            ft.Tab(label="流水线"),
+            ft.Tab(label="SRT 修正"),
+            ft.Tab(label="分镜生成"),
+            ft.Tab(label="提示词生成"),
+            ft.Tab(label="画面优化"),
+            ft.Tab(label="视频提示词"),
+        ],
+        on_change=lambda e: _on_tab_change(e, tab_view),
+    )
+
+    tab_view = ft.TabBarView(
+        controls=[
+            pipeline_page,
+            placeholder("SRT 修正 - 开发中"),
+            placeholder("分镜生成 - 开发中"),
+            placeholder("提示词生成 - 开发中"),
+            placeholder("画面优化 - 开发中"),
+            placeholder("视频提示词 - 开发中"),
         ],
     )
-    page.add(tabs)
+
+    page.add(
+        ft.Column([
+            tab_bar,
+            ft.Divider(height=1, color="#182036"),
+            tab_view,
+        ], spacing=0, expand=True)
+    )
+
+
+def _on_tab_change(e, tab_view: ft.TabBarView):
+    tab_view.selected_index = e.control.selected_index
+    tab_view.update()
 
 
 if __name__ == "__main__":
