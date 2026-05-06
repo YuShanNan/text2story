@@ -34,7 +34,7 @@ class RulesBar(ft.Container):
 
         # Mode toggle buttons
         self._mode_btn_seq = ft.Container(
-            content=ft.Text("顺序", size=10, color=ft.colors.WHITE),
+            content=ft.Text("顺序", size=10, color=ft.Colors.WHITE),
             bgcolor=PRIMARY,
             border_radius=ft.border_radius.all(3),
             padding=ft.padding.symmetric(2, 7),
@@ -110,9 +110,9 @@ class RulesBar(ft.Container):
     def _set_mode(self, seq: bool):
         self._sequential = seq
         self._mode_btn_seq.bgcolor = PRIMARY if seq else None
-        self._mode_btn_seq.content.color = ft.colors.WHITE if seq else TEXT_SECONDARY
+        self._mode_btn_seq.content.color = ft.Colors.WHITE if seq else TEXT_SECONDARY
         self._mode_btn_par.bgcolor = PRIMARY if not seq else None
-        self._mode_btn_par.content.color = ft.colors.WHITE if not seq else TEXT_SECONDARY
+        self._mode_btn_par.content.color = ft.Colors.WHITE if not seq else TEXT_SECONDARY
         self._exec_btn.text = "▶ 顺序执行" if seq else "▶ 批量执行"
         self._mode_btn_seq.update()
         self._mode_btn_par.update()
