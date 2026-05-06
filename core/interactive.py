@@ -973,27 +973,6 @@ def run_pipeline_for_file(
 
     saved_files = pass_result["saved_files"]
 
-    if rerun_attempted:
-        if final_pass["storyboard_warnings"]:
-            console.print(
-                Panel(
-                    "[bold yellow]已从原始 SRT 重新修正并重跑一遍，但分镜仍不稳定。[/]\n"
-                    "[dim]已保留最后一轮生成的修正文件和保守分镜结果。[/]",
-                    title="⚠ 自动重跑后仍不稳定",
-                    border_style="yellow",
-                    padding=_panel_padding(console),
-                )
-            )
-        else:
-            console.print(
-                Panel(
-                    "[bold green]已从原始 SRT 重新修正并重跑一遍，第二轮成功产出分镜。[/]",
-                    title="✅ 自动重跑恢复成功",
-                    border_style="green",
-                    padding=_panel_padding(console),
-                )
-            )
-
     console.print(
         "\n[bold green]✓ 阶段一完成：已产出分镜。[/]\n"
         "[dim]请在准备好原始画面提示词文件后，再通过阶段二完整流水线或单步执行继续。[/]"
@@ -1039,6 +1018,8 @@ def _run_stage_one_pass(
         prompt_name=correction_prompt,
         console_obj=console,
     )
+    if not corrected_srt.strip():
+        raise RuntimeError("SRT 修正产出空结果")
     corrected_srt_path = os.path.join(out_dir, f"{stem}_corrected.srt")
     write_file(corrected_srt_path, corrected_srt)
     console.print(f"[green]✓ 完成: {corrected_srt_path}[/]")
@@ -1073,6 +1054,8 @@ def _run_stage_one_pass(
     console.print("\n[bold cyan]━━━ 步骤 2/3: 修正后 SRT → TXT 提取 ━━━[/]")
     with console.status("[cyan]提取文案中..."):
         corrected_text = convert_srt_to_txt(corrected_srt_path)
+    if not corrected_text.strip():
+        raise RuntimeError("文案提取产出空结果")
     corrected_path = os.path.join(out_dir, f"{stem}_corrected.txt")
     write_file(corrected_path, corrected_text)
     console.print(f"[green]✓ 完成: {corrected_path}[/]")
@@ -1103,6 +1086,8 @@ def _run_stage_one_pass(
         prompt_name=storyboard_prompt,
         console_obj=console,
     )
+    if not storyboard_text.strip():
+        raise RuntimeError("分镜生成产出空结果")
     write_file(sb_path, storyboard_text)
     console.print(f"[green]✓ 完成: {sb_path}[/]")
     saved_files.append(("分镜脚本", sb_path))

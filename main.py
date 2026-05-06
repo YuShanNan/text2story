@@ -172,12 +172,15 @@ def storyboard(input_path, output_path, prompt_name):
     )
 
     text = read_file(input_path)
-    result = run_storyboard_generation_with_progress(
-        generator=generator,
-        text=text,
-        prompt_name=prompt_name,
-        console_obj=console,
-    )
+    try:
+        result = run_storyboard_generation_with_progress(
+            generator=generator,
+            text=text,
+            prompt_name=prompt_name,
+            console_obj=console,
+        )
+    except RuntimeError as e:
+        _abort_cli(str(e), title="❌ 分镜生成失败")
 
     if output_path is None:
         stem = _stem_from_output_file(input_path)
@@ -443,16 +446,19 @@ def run(input_path, correction_prompt, storyboard_prompt, output_dir):
         _abort_cli(f"文件不存在: {_format_cli_path(input_path)}")
 
     bundle = get_client_bundle()
-    run_pipeline_for_file(
-        bundle=bundle,
-        srt_path=input_path,
-        correction_prompt=correction_prompt,
-        storyboard_prompt=storyboard_prompt,
-        file_index=1,
-        total_files=1,
-        unattended=True,
-        output_dir=output_dir,
-    )
+    try:
+        run_pipeline_for_file(
+            bundle=bundle,
+            srt_path=input_path,
+            correction_prompt=correction_prompt,
+            storyboard_prompt=storyboard_prompt,
+            file_index=1,
+            total_files=1,
+            unattended=True,
+            output_dir=output_dir,
+        )
+    except RuntimeError as e:
+        _abort_cli(str(e), title="❌ 流水线执行失败")
 
 
 @cli.command(name="continue-run")
@@ -502,6 +508,7 @@ def continue_run(storyboard_paths, raw_prompt_paths, optimize_prompt, video_prom
     multi_file = len(pairs) > 1
     bundle = get_client_bundle()
 
+    failed_files = []
     for i, (storyboard_path, raw_prompt_path) in enumerate(pairs, start=1):
         stem = os.path.basename(os.path.dirname(os.path.abspath(storyboard_path)))
         if multi_file:
@@ -509,19 +516,30 @@ def continue_run(storyboard_paths, raw_prompt_paths, optimize_prompt, video_prom
                 f"\n[bold cyan]━━━ [{i}/{len(pairs)}] {stem} ━━━[/]"
             )
 
-        run_postprocess_pipeline_for_storyboard(
-            bundle=bundle,
-            storyboard_path=storyboard_path,
-            raw_prompt_path=raw_prompt_path,
-            optimize_prompt_name=optimize_prompt,
-            video_prompt_name=video_prompt_name,
-            batch_size=batch_size,
-            unattended=True,
-            output_dir=output_dir if not multi_file else None,
-        )
+        try:
+            run_postprocess_pipeline_for_storyboard(
+                bundle=bundle,
+                storyboard_path=storyboard_path,
+                raw_prompt_path=raw_prompt_path,
+                optimize_prompt_name=optimize_prompt,
+                video_prompt_name=video_prompt_name,
+                batch_size=batch_size,
+                unattended=True,
+                output_dir=output_dir if not multi_file else None,
+            )
+        except Exception as e:
+            console.print(f"[red]✗ {stem} 处理失败: {e}[/]")
+            failed_files.append(stem)
+            continue
 
     if multi_file:
-        console.print(f"\n[bold green]✓ 全部完成！共处理 {len(pairs)} 个文件[/]")
+        if failed_files:
+            console.print(
+                f"\n[yellow]✓ 完成 {len(pairs) - len(failed_files)}/{len(pairs)} 个文件，"
+                f"失败: {', '.join(failed_files)}[/]"
+            )
+        else:
+            console.print(f"\n[bold green]✓ 全部完成！共处理 {len(pairs)} 个文件[/]")
 
 
 if __name__ == "__main__":

@@ -80,6 +80,7 @@ class PromptOptimizer:
             self.model,
         )
 
+        zero_growth_streak = 0
         while completed < total:
             batch_index += 1
             result = self.client.chat_multi_turn(
@@ -101,6 +102,11 @@ class PromptOptimizer:
             )
             yield {"completed": completed, "total": total,
                    "batch_index": batch_index, "batch_total": batch_total}
+
+            zero_growth_streak = zero_growth_streak + 1 if len(batch_lines) == 0 else 0
+            if zero_growth_streak >= 3:
+                logger.warning("  连续 %s 批无有效输出，强行终止优化", zero_growth_streak)
+                break
 
             if completed >= total:
                 break
