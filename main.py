@@ -547,7 +547,7 @@ def gui():
     """启动 Flet 桌面 GUI（浏览器模式）"""
     import flet as ft
     from flet_ui.main import main as flet_main
-    ft.run(flet_main, view=ft.AppView.WEB_BROWSER, port=8550)
+    ft.run(flet_main, view=ft.AppView.WEB_BROWSER, port=0)
 
 
 if __name__ == "__main__":
