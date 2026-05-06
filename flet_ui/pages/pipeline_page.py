@@ -18,7 +18,6 @@ class PipelinePage(ft.Column):
     """流水线主页面：文件选择 -> 规则配置 -> 执行队列 -> 进度条"""
 
     def __init__(self, page: ft.Page):
-        self.page = page
         self._progress = ProgressBar()
         self._queue = QueueView()
         self._rules = RulesBar(on_execute=self._on_execute)
