@@ -30,7 +30,7 @@ class FakeClient:
         })
         if self.return_value is not None:
             return self.return_value
-        return f"optimized_prompt{len(self.calls)}"
+        return f"优化后提示词{len(self.calls)}"
 
     def chat_multi_turn(self, model, messages, temperature=0.7,
                         max_tokens=4096, fallback_model=None, thinking_enabled=None):
@@ -42,7 +42,7 @@ class FakeClient:
         })
         if self.return_value is not None:
             return self.return_value
-        return f"optimized_prompt{len(self.chat_multi_turn_calls)}"
+        return f"优化后提示词{len(self.chat_multi_turn_calls)}"
 
 
 class PromptOptimizerTest(unittest.TestCase):
@@ -245,6 +245,7 @@ class PromptOptimizerTest(unittest.TestCase):
                 for i in range(1, 13)
             ], rows_per_batch=5))
 
+        self.assertGreater(len(client.calls), 0)
         for call in client.calls:
             self.assertIn("全局叙事摘要", call["user_content"])
 
