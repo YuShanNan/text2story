@@ -22,6 +22,7 @@ from api.client_factory import create_clients, ClientBundle
 from core.srt_converter import convert_srt_to_txt
 from core.srt_corrector import SrtCorrector, batch_srt_blocks, split_srt_blocks
 from core.storyboard_generator import StoryboardGenerator
+from core.storyboard_postprocess import postprocess_storyboard
 from core.prompt_generator import PromptGenerator, parse_storyboard
 from core.prompt_optimizer import PromptOptimizer
 from core.video_prompt_generator import VideoPromptGenerator
@@ -1088,6 +1089,7 @@ def _run_stage_one_pass(
     )
     if not storyboard_text.strip():
         raise RuntimeError("分镜生成产出空结果")
+    storyboard_text = postprocess_storyboard(storyboard_text)
     write_file(sb_path, storyboard_text)
     console.print(f"[green]✓ 完成: {sb_path}[/]")
     saved_files.append(("分镜脚本", sb_path))
@@ -1107,6 +1109,7 @@ def _run_stage_one_pass(
                 prompt_name=storyboard_prompt,
                 console_obj=console,
             )
+            storyboard_text = postprocess_storyboard(storyboard_text)
             write_file(sb_path, storyboard_text)
             console.print(f"[green]✓ 重新生成完成: {sb_path}[/]")
             review = step_review(sb_path, "AI 分镜生成")
