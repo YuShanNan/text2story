@@ -202,7 +202,10 @@ class PromptOptimizer:
             lines = json_str.split("\n")
             json_str = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
 
-        data = json.loads(json_str)
+        try:
+            data = json.loads(json_str)
+        except json.JSONDecodeError:
+            raise ValueError(f"全局摘要JSON解析失败: {json_str[:200]}")
 
         parts = [f"【全局叙事摘要】\n总镜数：{data.get('total_scenes', '?')}"]
 
