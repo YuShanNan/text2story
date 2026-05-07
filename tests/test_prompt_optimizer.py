@@ -220,7 +220,14 @@ class PromptOptimizerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             self._make_prompts_dir(tmp_dir)
 
-            client = FakeClient()
+            class C(FakeClient):
+                def chat(self, model, system_prompt, user_content, **kw):
+                    super().chat(model, system_prompt, user_content, **kw)
+                    if "缺少第" in user_content:
+                        return "R\n"  # retry call, ignored
+                    return "L1\nL2\nL3\nL4\nL5"
+
+            client = C()
             opt = PromptOptimizer(client=client, model="m",
                                   prompts_dir=os.path.join(tmp_dir, "prompts"))
             _collect_batch(opt.optimize_files_batch(rows=[
@@ -228,7 +235,7 @@ class PromptOptimizerTest(unittest.TestCase):
                 for i in range(1, 13)
             ], rows_per_batch=5))
 
-        self.assertEqual(4, len(client.calls))  # 1 summary + 3 batch
+        self.assertEqual(4, len(client.calls))  # 1 summary + 3 batch, no retries
         self.assertIn("衔接锚点", client.calls[2]["user_content"])  # 2nd batch
         self.assertNotIn("衔接锚点", client.calls[0]["user_content"])  # summary call
         self.assertNotIn("衔接锚点", client.calls[1]["user_content"])  # 1st batch
@@ -238,7 +245,14 @@ class PromptOptimizerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             self._make_prompts_dir(tmp_dir)
 
-            client = FakeClient()
+            class C(FakeClient):
+                def chat(self, model, system_prompt, user_content, **kw):
+                    super().chat(model, system_prompt, user_content, **kw)
+                    if "缺少第" in user_content:
+                        return "R\n"
+                    return "L1\nL2\nL3\nL4\nL5"
+
+            client = C()
             opt = PromptOptimizer(client=client, model="m",
                                   prompts_dir=os.path.join(tmp_dir, "prompts"))
             _collect_batch(opt.optimize_files_batch(rows=[
@@ -248,6 +262,8 @@ class PromptOptimizerTest(unittest.TestCase):
 
         self.assertGreater(len(client.calls), 1)
         for call in client.calls[1:]:  # skip the summary generation call
+            if "缺少第" in call["user_content"]:
+                continue  # skip retry calls
             self.assertIn("全局叙事摘要", call["user_content"])
 
 

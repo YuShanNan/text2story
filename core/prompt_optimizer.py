@@ -108,6 +108,34 @@ class PromptOptimizer:
             lines = [l.strip() for l in result.strip().split("\n") if l.strip()]
             needed = min(rows_per_batch, total - completed)
             batch_lines = lines[:needed]
+
+            # 补齐不足行数（最多重试2次）
+            retry_count = 0
+            while len(batch_lines) < needed and retry_count < 2 and len(batch_lines) > 0:
+                retry_count += 1
+                missing = needed - len(batch_lines)
+                miss_start = batch_start_idx + len(batch_lines) + 1
+                miss_end = batch_start_idx + needed
+                retry_msg = (
+                    f"上一轮只输出了 {len(batch_lines)} 条，"
+                    f"缺少第 {miss_start}-{miss_end} 条。"
+                    f"请补充生成这 {missing} 条的优化后提示词，"
+                    f"每条一行，按顺序输出。"
+                )
+                logger.warning(
+                    "  第 %s 批缺少 %s 条，第 %s 次重试补齐 (第 %s-%s 条)",
+                    batch_idx + 1, missing, retry_count, miss_start, miss_end,
+                )
+                extra_result = self.client.chat(
+                    model=self.model,
+                    system_prompt=system_prompt,
+                    user_content=retry_msg,
+                    temperature=0.7,
+                    fallback_model=self.fallback_model,
+                )
+                extra_lines = [l.strip() for l in extra_result.strip().split("\n") if l.strip()]
+                batch_lines.extend(extra_lines[:missing])
+
             all_lines.extend(batch_lines)
             completed += len(batch_lines)
 
