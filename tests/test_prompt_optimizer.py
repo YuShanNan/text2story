@@ -15,37 +15,34 @@ def _collect_batch(generator):
 
 class FakeClient:
     def __init__(self, return_value: str | None = None):
-        self.calls = []
+        self.calls = []                  # records all chat() calls
+        self.chat_multi_turn_calls = []  # records all chat_multi_turn() calls
         self.return_value = return_value
-
-    def chat_multi_turn(self, model, messages, temperature=0.7,
-                        max_tokens=4096, fallback_model=None, thinking_enabled=None):
-        system_prompt = ""
-        user_content = ""
-        if messages and messages[0]["role"] == "system":
-            system_prompt = messages[0]["content"]
-        for msg in reversed(messages):
-            if msg["role"] == "user":
-                user_content = msg["content"]
-                break
-        self.calls.append({
-            "model": model, "system_prompt": system_prompt,
-            "user_content": user_content, "messages": list(messages),
-            "temperature": temperature, "fallback_model": fallback_model,
-        })
-        if self.return_value is not None:
-            return self.return_value
-        return f"优化后提示词{len(self.calls)}"
 
     def chat(self, model, system_prompt, user_content, temperature=0.7,
              max_tokens=4096, fallback_model=None, thinking_enabled=None):
-        return self.chat_multi_turn(
-            model=model,
-            messages=[{"role": "system", "content": system_prompt},
-                       {"role": "user", "content": user_content}],
-            temperature=temperature, max_tokens=max_tokens,
-            fallback_model=fallback_model, thinking_enabled=thinking_enabled,
-        )
+        self.calls.append({
+            "model": model,
+            "system_prompt": system_prompt,
+            "user_content": user_content,
+            "temperature": temperature,
+            "fallback_model": fallback_model,
+        })
+        if self.return_value is not None:
+            return self.return_value
+        return f"optimized_prompt{len(self.calls)}"
+
+    def chat_multi_turn(self, model, messages, temperature=0.7,
+                        max_tokens=4096, fallback_model=None, thinking_enabled=None):
+        self.chat_multi_turn_calls.append({
+            "model": model,
+            "messages": list(messages),
+            "temperature": temperature,
+            "fallback_model": fallback_model,
+        })
+        if self.return_value is not None:
+            return self.return_value
+        return f"optimized_prompt{len(self.chat_multi_turn_calls)}"
 
 
 class PromptOptimizerTest(unittest.TestCase):
@@ -194,6 +191,62 @@ class PromptOptimizerTest(unittest.TestCase):
         self.assertEqual(1, len(client.calls))
         self.assertIn("SA", client.calls[0]["user_content"])
         self.assertIn("SB", client.calls[0]["user_content"])
+
+
+    def test_independent_calls_no_message_accumulation(self):
+        """verify each batch uses independent chat(), no messages accumulation"""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            self._make_prompts_dir(tmp_dir)
+
+            class C(FakeClient):
+                def chat(self, model, system_prompt, user_content, **kw):
+                    super().chat(model, system_prompt, user_content, **kw)
+                    n = len(self.calls)
+                    return f"R{n}A\nR{n}B\nR{n}C\nR{n}D"
+
+            client = C()
+            opt = PromptOptimizer(client=client, model="m",
+                                  prompts_dir=os.path.join(tmp_dir, "prompts"))
+            _collect_batch(opt.optimize_files_batch(rows=[
+                {"s": str(i), "storyboard_text": f"S{i}", "raw_image_prompt": f"P{i}"}
+                for i in range(1, 9)
+            ], rows_per_batch=4))
+
+        self.assertEqual(2, len(client.calls))
+        self.assertEqual(0, len(client.chat_multi_turn_calls))
+
+    def test_continuity_anchor_passed(self):
+        """verify second batch user_content contains previous batch tail output"""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            self._make_prompts_dir(tmp_dir)
+
+            client = FakeClient()
+            opt = PromptOptimizer(client=client, model="m",
+                                  prompts_dir=os.path.join(tmp_dir, "prompts"))
+            _collect_batch(opt.optimize_files_batch(rows=[
+                {"s": str(i), "storyboard_text": f"S{i}", "raw_image_prompt": f"P{i}"}
+                for i in range(1, 13)
+            ], rows_per_batch=5))
+
+        self.assertEqual(3, len(client.calls))
+        self.assertIn("衔接锚点", client.calls[1]["user_content"])
+        self.assertNotIn("衔接锚点", client.calls[0]["user_content"])
+
+    def test_summary_in_every_batch(self):
+        """verify every batch user_content contains global summary"""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            self._make_prompts_dir(tmp_dir)
+
+            client = FakeClient()
+            opt = PromptOptimizer(client=client, model="m",
+                                  prompts_dir=os.path.join(tmp_dir, "prompts"))
+            _collect_batch(opt.optimize_files_batch(rows=[
+                {"s": str(i), "storyboard_text": f"S{i}", "raw_image_prompt": f"P{i}"}
+                for i in range(1, 13)
+            ], rows_per_batch=5))
+
+        for call in client.calls:
+            self.assertIn("全局叙事摘要", call["user_content"])
 
 
 if __name__ == "__main__":
