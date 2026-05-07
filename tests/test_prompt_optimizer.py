@@ -62,15 +62,15 @@ class PromptOptimizerTest(unittest.TestCase):
             with open(rp, "w") as f: f.write("PA\nPB\n")
 
             class C(FakeClient):
-                def chat_multi_turn(self, model, messages, **kw):
-                    super().chat_multi_turn(model, messages, **kw)
+                def chat(self, model, system_prompt, user_content, **kw):
+                    super().chat(model, system_prompt, user_content, **kw)
                     return "OA\nOB"
 
             client = C()
             opt = PromptOptimizer(client=client, model="m", prompts_dir=os.path.join(tmp_dir, "prompts"))
             r = _collect_batch(opt.optimize_files_batch(storyboard_path=sb, raw_prompt_path=rp))
         self.assertEqual("OA\nOB", r)
-        self.assertEqual(1, len(client.calls))
+        self.assertEqual(2, len(client.calls))  # 1 summary + 1 batch
 
     def test_loads_default_prompt_with_back_facing_rule(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -82,7 +82,7 @@ class PromptOptimizerTest(unittest.TestCase):
             client = FakeClient()
             opt = PromptOptimizer(client=client, model="m", prompts_dir=os.path.join(root, "prompts"))
             _collect_batch(opt.optimize_files_batch(storyboard_path=sb, raw_prompt_path=rp, prompt_name="default"))
-        self.assertIn("背对镜头", client.calls[0]["system_prompt"])
+        self.assertIn("背对镜头", client.calls[1]["system_prompt"])  # 1st batch call (index 0 is summary)
 
     def test_flattens_multiline_output(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -136,15 +136,15 @@ class PromptOptimizerTest(unittest.TestCase):
             opt = PromptOptimizer(client=FakeClient(), model="m", prompts_dir=os.path.join(tmp_dir, "prompts"))
             r = _collect_batch(opt.optimize_files_batch(rows=[
                 {"scene_id": "1", "storyboard_text": "A", "raw_image_prompt": "P"}]))
-        self.assertEqual("优化后提示词1", r)
+        self.assertEqual("优化后提示词2", r)  # 1 summary + 1 batch
 
     def test_batch_single_turn(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             self._make_prompts_dir(tmp_dir)
 
             class C(FakeClient):
-                def chat_multi_turn(self, model, messages, **kw):
-                    super().chat_multi_turn(model, messages, **kw)
+                def chat(self, model, system_prompt, user_content, **kw):
+                    super().chat(model, system_prompt, user_content, **kw)
                     return "A\nB\nC"
 
             client = C()
@@ -152,7 +152,7 @@ class PromptOptimizerTest(unittest.TestCase):
             r = _collect_batch(opt.optimize_files_batch(rows=[
                 {"s": str(i), "storyboard_text": f"S{i}", "raw_image_prompt": f"P{i}"} for i in range(1, 4)
             ], rows_per_batch=50))
-        self.assertEqual(1, len(client.calls))
+        self.assertEqual(2, len(client.calls))  # 1 summary + 1 batch
         self.assertEqual(3, len(r.strip().split("\n")))
 
     def test_batch_multi_turn(self):
@@ -160,8 +160,8 @@ class PromptOptimizerTest(unittest.TestCase):
             self._make_prompts_dir(tmp_dir)
 
             class C(FakeClient):
-                def chat_multi_turn(self, model, messages, **kw):
-                    super().chat_multi_turn(model, messages, **kw)
+                def chat(self, model, system_prompt, user_content, **kw):
+                    super().chat(model, system_prompt, user_content, **kw)
                     n = len(self.calls)
                     return f"R{n}A\nR{n}B\nR{n}C"
 
@@ -170,7 +170,7 @@ class PromptOptimizerTest(unittest.TestCase):
             r = _collect_batch(opt.optimize_files_batch(rows=[
                 {"s": str(i), "storyboard_text": f"S{i}", "raw_image_prompt": f"P{i}"} for i in range(1, 8)
             ], rows_per_batch=3))
-        self.assertEqual(3, len(client.calls))
+        self.assertEqual(4, len(client.calls))  # 1 summary + 3 batches
         self.assertEqual(7, len(r.strip().split("\n")))
 
     def test_batch_all_rows_in_one_message(self):
@@ -178,8 +178,8 @@ class PromptOptimizerTest(unittest.TestCase):
             self._make_prompts_dir(tmp_dir)
 
             class C(FakeClient):
-                def chat_multi_turn(self, model, messages, **kw):
-                    super().chat_multi_turn(model, messages, **kw)
+                def chat(self, model, system_prompt, user_content, **kw):
+                    super().chat(model, system_prompt, user_content, **kw)
                     return "A\nB"
 
             client = C()
@@ -188,9 +188,9 @@ class PromptOptimizerTest(unittest.TestCase):
                 {"s": "1", "storyboard_text": "SA", "raw_image_prompt": "PA"},
                 {"s": "2", "storyboard_text": "SB", "raw_image_prompt": "PB"},
             ], rows_per_batch=50))
-        self.assertEqual(1, len(client.calls))
-        self.assertIn("SA", client.calls[0]["user_content"])
-        self.assertIn("SB", client.calls[0]["user_content"])
+        self.assertEqual(2, len(client.calls))  # 1 summary + 1 batch
+        self.assertIn("SA", client.calls[1]["user_content"])  # batch call
+        self.assertIn("SB", client.calls[1]["user_content"])  # batch call
 
 
     def test_independent_calls_no_message_accumulation(self):
@@ -212,7 +212,7 @@ class PromptOptimizerTest(unittest.TestCase):
                 for i in range(1, 9)
             ], rows_per_batch=4))
 
-        self.assertEqual(2, len(client.calls))
+        self.assertEqual(3, len(client.calls))  # 1 summary + 2 batch
         self.assertEqual(0, len(client.chat_multi_turn_calls))
 
     def test_continuity_anchor_passed(self):
@@ -228,9 +228,10 @@ class PromptOptimizerTest(unittest.TestCase):
                 for i in range(1, 13)
             ], rows_per_batch=5))
 
-        self.assertEqual(3, len(client.calls))
-        self.assertIn("衔接锚点", client.calls[1]["user_content"])
-        self.assertNotIn("衔接锚点", client.calls[0]["user_content"])
+        self.assertEqual(4, len(client.calls))  # 1 summary + 3 batch
+        self.assertIn("衔接锚点", client.calls[2]["user_content"])  # 2nd batch
+        self.assertNotIn("衔接锚点", client.calls[0]["user_content"])  # summary call
+        self.assertNotIn("衔接锚点", client.calls[1]["user_content"])  # 1st batch
 
     def test_summary_in_every_batch(self):
         """verify every batch user_content contains global summary"""
@@ -245,8 +246,8 @@ class PromptOptimizerTest(unittest.TestCase):
                 for i in range(1, 13)
             ], rows_per_batch=5))
 
-        self.assertGreater(len(client.calls), 0)
-        for call in client.calls:
+        self.assertGreater(len(client.calls), 1)
+        for call in client.calls[1:]:  # skip the summary generation call
             self.assertIn("全局叙事摘要", call["user_content"])
 
 
