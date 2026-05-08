@@ -55,6 +55,7 @@ class StoryboardGenerator:
                 system_prompt=system_prompt,
                 user_content=user_msg,
                 temperature=0.7,
+                max_tokens=16000,
                 fallback_model=self.fallback_model,
             )
 
