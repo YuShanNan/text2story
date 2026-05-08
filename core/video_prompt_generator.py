@@ -56,12 +56,14 @@ class VideoPromptGenerator:
         rows: list[dict[str, str]] | None = None,
         prompt_name: str = "default",
         rows_per_batch: int = 50,
+        output_file: str | None = None,
     ):
         """批量模式：全量行一次性传入，分批次输出并自动校验。
 
         将全部行拼接为一个 user message，要求模型按 rows_per_batch 分批输出。
-        每批完成后自动核对条数，确认后继续下一批。每批 yield 一次进度事件，
-        最后 yield 最终结果字符串。
+        每批完成后自动核对条数，确认后继续下一批。每批 yield 一次进度事件
+        （含 batch_lines），最后 yield 最终结果字符串。
+        若指定 output_file，每批完成后立即追加写入。
         """
         if rows is None:
             if storyboard_path is None or optimized_image_prompt_path is None:
@@ -113,6 +115,7 @@ class VideoPromptGenerator:
                 model=self.model,
                 messages=messages,
                 temperature=0.7,
+                max_tokens=16000,
                 fallback_model=self.fallback_model,
             )
             messages.append({"role": "assistant", "content": result})
@@ -126,8 +129,18 @@ class VideoPromptGenerator:
             logger.info(
                 "  第 %s/%s 批生成完成 (%s/%s 条)", batch_index, batch_total, completed, total
             )
-            yield {"completed": completed, "total": total,
-                   "batch_index": batch_index, "batch_total": batch_total}
+            progress = {"completed": completed, "total": total,
+                   "batch_index": batch_index, "batch_total": batch_total,
+                   "batch_lines": list(batch_lines)}
+            if output_file:
+                import os as _os
+                _os.makedirs(_os.path.dirname(output_file), exist_ok=True)
+                with open(output_file, "a", encoding="utf-8-sig") as f:
+                    if completed <= len(batch_lines):
+                        f.write("\n".join(batch_lines))
+                    else:
+                        f.write("\n" + "\n".join(batch_lines))
+            yield progress
 
             zero_growth_streak = zero_growth_streak + 1 if len(batch_lines) == 0 else 0
             if zero_growth_streak >= 3:

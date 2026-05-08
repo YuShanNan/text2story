@@ -145,7 +145,7 @@ class OptimizeCliTest(unittest.TestCase):
                 output_text = file.read().strip()
 
         self.assertEqual(
-            "优化后提示词2\n优化后提示词3",
+            "优化后提示词3\n优化后提示词4",
             output_text,
         )
 
@@ -218,7 +218,7 @@ class OptimizeCliTest(unittest.TestCase):
                     "scene_id": "1",
                     "storyboard_text": "第一段分镜",
                     "raw_image_prompt": "原始提示词一",
-                    "optimized_image_prompt": "优化后提示词2",
+                    "optimized_image_prompt": "优化后提示词3",
                     "notes_cn": "",
                 }
             ],

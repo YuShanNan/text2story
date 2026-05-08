@@ -25,7 +25,8 @@ class StoryboardGenerator:
             results.append(event["content"])
         return "\n".join(results)
 
-    def iter_generate_progress(self, text: str, prompt_name: str = "default"):
+    def iter_generate_progress(self, text: str, prompt_name: str = "default",
+                              output_file: str | None = None):
         system_prompt = load_prompt(self.prompts_dir, "storyboard", prompt_name)
         chunks = split_text(text, self.max_chunk_size)
         total = len(chunks)
@@ -60,9 +61,18 @@ class StoryboardGenerator:
             context_source = result.strip()
             context = context_source[-200:] if len(context_source) > 200 else context_source
             logger.info(f"  第 {i}/{total} 段分镜生成完成")
+            content = result.strip()
+            if output_file:
+                import os as _os
+                _os.makedirs(_os.path.dirname(output_file), exist_ok=True)
+                with open(output_file, "a", encoding="utf-8-sig") as f:
+                    if i == 1:
+                        f.write(content)
+                    else:
+                        f.write("\n" + content)
             yield {
-                "content": result.strip(),
-                "normalized_content": result.strip(),
+                "content": content,
+                "normalized_content": content,
                 "chunk_index": i,
                 "chunk_total": total,
                 "chunk_elapsed_seconds": time.perf_counter() - chunk_start,

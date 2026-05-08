@@ -37,6 +37,8 @@ class StageAwareFakeClient:
             return messages[-1]["content"] if messages[-1]["role"] == "user" else ""
         if system_prompt == "STORYBOARD":
             return "1. 测试分镜"
+        if "叙事结构分析" in system_prompt or system_prompt == "SUMMARY":
+            return '{"total_scenes":2,"characters":[],"location_changes":[],"lighting_timeline":[]}'
         if system_prompt == "OPTIMIZE":
             self.optimize_count += 1
             return f"优化结果{self.optimize_count}"

@@ -1,9 +1,11 @@
-from utils.file_utils import load_prompt, read_non_empty_lines
-from utils.logger import get_logger
 import json
+import os
 import re
 
-DEFAULT_BATCH_SIZE = 10
+from utils.file_utils import load_prompt, read_non_empty_lines
+from utils.logger import get_logger
+
+DEFAULT_BATCH_SIZE = 50
 logger = get_logger(__name__)
 
 
@@ -33,13 +35,16 @@ class PromptOptimizer:
         raw_prompt_path: str | None = None,
         rows: list[dict[str, str]] | None = None,
         prompt_name: str = "default",
-        rows_per_batch: int = 10,
+        rows_per_batch: int = 50,
+        output_file: str | None = None,
     ):
-        """批量模式：独立分批调用，每批通过独立 chat() 处理。
+        """批量模式：全量原文一次性发送，chat_multi_turn 累积消息分批输出。
 
-        先生成全局叙事摘要，再将全部行按 rows_per_batch 切分为多批，
-        每批独立调用 chat()（不累积 messages），通过全局摘要和尾锚保证跨批连续性。
-        每批 yield 一次进度事件，最后 yield 最终结果字符串。
+        全部行拼接为一个 user message 发送给模型，模型分批输出。
+        每批完成后发送确认消息继续下一批。messages 累积保证模型始终
+        拥有完整故事上下文，防止跨故事污染。
+        每批 yield 一次进度事件（含 batch_lines），最后 yield 最终结果字符串。
+        若指定 output_file，每批完成后立即追加写入。
         """
         if rows is None:
             if storyboard_path is None or raw_prompt_path is None:
@@ -58,52 +63,47 @@ class PromptOptimizer:
             return
 
         summary = self._build_global_summary(rows)
+        known_entities = self._extract_known_entities(rows)
 
-        batches = [
-            rows[i:i + rows_per_batch]
-            for i in range(0, total, rows_per_batch)
-        ]
-        batch_total = len(batches)
+        all_rows_text = "\n\n".join(
+            f"[{i + 1}] 分镜原文：{row['storyboard_text']}\n"
+            f"    原始画面提示词：{row['raw_image_prompt']}"
+            for i, row in enumerate(rows)
+        )
+
+        first_batch_count = min(rows_per_batch, total)
+        initial_user = (
+            f"{summary}\n\n"
+            f"以下是 {total} 条分镜和对应的原始画面提示词。\n\n"
+            f"{all_rows_text}\n\n"
+            f"请先生成前 {first_batch_count} 条的优化后提示词，"
+            f"每条占一行，按顺序输出。完成后不要输出其他内容。"
+        )
+
+        messages: list[dict] = [{"role": "system", "content": system_prompt}]
+        messages.append({"role": "user", "content": initial_user})
+
+        all_lines: list[str] = []
+        completed = 0
+        batch_index = 0
+        batch_total = (total + rows_per_batch - 1) // rows_per_batch
+        zero_growth_streak = 0
 
         logger.info(
-            "开始独立分批画面提示词优化 (共 %s 条, %s 批, 每批 %s 条, 模型: %s)",
+            "开始批量画面提示词优化 (共 %s 条, %s 批, 每批最多 %s 条, 模型: %s)",
             total, batch_total, rows_per_batch, self.model,
         )
 
-        all_lines: list[str] = []
-        prev_tail: str | None = None
-        completed = 0
-        zero_growth_streak = 0
-
-        for batch_idx, batch in enumerate(batches):
-            batch_start_idx = batch_idx * rows_per_batch
-
-            user_msg = summary
-
-            if prev_tail and batch_idx > 0:
-                user_msg += (
-                    f"\n\n[衔接锚点] 上一批最后一条（第{batch_start_idx}条）"
-                    f"优化结果：\n{prev_tail}"
-                )
-
-            batch_text = "\n\n".join(
-                f"[{batch_start_idx + j + 1}] 分镜原文：{row['storyboard_text']}\n"
-                f"    原始画面提示词：{row['raw_image_prompt']}"
-                for j, row in enumerate(batch)
-            )
-            user_msg += (
-                f"\n\n[本批] 以下是第 {batch_start_idx + 1}-"
-                f"{min(batch_start_idx + rows_per_batch, total)} 条"
-                f"的分镜原文和原始画面提示词，请逐条优化：\n\n{batch_text}"
-            )
-
-            result = self.client.chat(
+        while completed < total:
+            batch_index += 1
+            result = self.client.chat_multi_turn(
                 model=self.model,
-                system_prompt=system_prompt,
-                user_content=user_msg,
+                messages=messages,
                 temperature=0.7,
+                max_tokens=16000,
                 fallback_model=self.fallback_model,
             )
+            messages.append({"role": "assistant", "content": result})
 
             lines = [l.strip() for l in result.strip().split("\n") if l.strip()]
             needed = min(rows_per_batch, total - completed)
@@ -114,8 +114,8 @@ class PromptOptimizer:
             while len(batch_lines) < needed and retry_count < 2 and len(batch_lines) > 0:
                 retry_count += 1
                 missing = needed - len(batch_lines)
-                miss_start = batch_start_idx + len(batch_lines) + 1
-                miss_end = batch_start_idx + needed
+                miss_start = completed + len(batch_lines) + 1
+                miss_end = completed + needed
                 retry_msg = (
                     f"上一轮只输出了 {len(batch_lines)} 条，"
                     f"缺少第 {miss_start}-{miss_end} 条。"
@@ -124,42 +124,103 @@ class PromptOptimizer:
                 )
                 logger.warning(
                     "  第 %s 批缺少 %s 条，第 %s 次重试补齐 (第 %s-%s 条)",
-                    batch_idx + 1, missing, retry_count, miss_start, miss_end,
+                    batch_index, missing, retry_count, miss_start, miss_end,
                 )
-                extra_result = self.client.chat(
+                messages.append({"role": "user", "content": retry_msg})
+                extra_result = self.client.chat_multi_turn(
                     model=self.model,
-                    system_prompt=system_prompt,
-                    user_content=retry_msg,
+                    messages=messages,
                     temperature=0.7,
+                    max_tokens=16000,
                     fallback_model=self.fallback_model,
                 )
+                messages.append({"role": "assistant", "content": extra_result})
                 extra_lines = [l.strip() for l in extra_result.strip().split("\n") if l.strip()]
                 batch_lines.extend(extra_lines[:missing])
+
+            # 验证输出行，对异常行逐行重试
+            batch_start_idx = completed
+            valid_lines, line_issues = self._validate_batch_lines(
+                batch_lines, known_entities, batch_start_idx,
+            )
+            for line_idx, problems in line_issues:
+                batch_rel_idx = line_idx - batch_start_idx
+                if batch_rel_idx >= len(rows):
+                    continue
+                logger.warning(
+                    "  第 %s 条疑似异常 (%s)，尝试单行重试",
+                    line_idx + 1, "; ".join(problems),
+                )
+                row = rows[line_idx]
+                retry_msg = (
+                    f"请重新生成第{line_idx + 1}条的优化后提示词。"
+                    f"注意：必须基于以下原始内容生成，不得引入其他故事的角色或场景。\n\n"
+                    f"分镜原文：{row['storyboard_text']}\n"
+                    f"原始画面提示词：{row['raw_image_prompt']}"
+                )
+                try:
+                    extra_result = self.client.chat(
+                        model=self.model,
+                        system_prompt=system_prompt,
+                        user_content=retry_msg,
+                        temperature=0.7,
+                        fallback_model=self.fallback_model,
+                    )
+                    new_line = extra_result.strip().split("\n")[0].strip()
+                    new_valid, _ = self._validate_batch_lines(
+                        [new_line], known_entities, line_idx,
+                    )
+                    if new_valid:
+                        batch_lines[batch_rel_idx] = new_line
+                        logger.info("  第 %s 条单行重试通过", line_idx + 1)
+                    else:
+                        logger.warning(
+                            "  第 %s 条单行重试仍未通过验证，保留原行",
+                            line_idx + 1,
+                        )
+                except Exception:
+                    logger.warning(
+                        "  第 %s 条单行重试失败，保留原行", line_idx + 1,
+                    )
 
             all_lines.extend(batch_lines)
             completed += len(batch_lines)
 
-            if batch_lines:
-                prev_tail = batch_lines[-1]
-
             logger.info(
                 "  第 %s/%s 批优化完成 (%s/%s 条)",
-                batch_idx + 1, batch_total, completed, total,
+                batch_index, batch_total, completed, total,
             )
-            yield {
+            progress = {
                 "completed": completed, "total": total,
-                "batch_index": batch_idx + 1, "batch_total": batch_total,
+                "batch_index": batch_index, "batch_total": batch_total,
+                "batch_lines": list(batch_lines),
             }
+            if output_file:
+                os.makedirs(os.path.dirname(output_file), exist_ok=True)
+                with open(output_file, "a", encoding="utf-8-sig") as f:
+                    if completed <= len(batch_lines):
+                        f.write("\n".join(batch_lines))
+                    else:
+                        f.write("\n" + "\n".join(batch_lines))
+            yield progress
 
-            if len(batch_lines) == 0:
-                zero_growth_streak += 1
-                if zero_growth_streak >= 3:
-                    logger.warning("  连续 %s 批无有效输出，强行终止优化", zero_growth_streak)
-                    break
-            else:
-                zero_growth_streak = 0
+            zero_growth_streak = zero_growth_streak + 1 if len(batch_lines) == 0 else 0
+            if zero_growth_streak >= 3:
+                logger.warning("  连续 %s 批无有效输出，强行终止优化", zero_growth_streak)
+                break
 
-        logger.info("独立分批画面提示词优化完成 (%s 条)", len(all_lines))
+            if completed >= total:
+                break
+
+            next_count = min(rows_per_batch, total - completed)
+            confirm = (
+                f"已生成并确认前 {completed} 条。"
+                f"请继续生成第 {completed + 1}-{completed + next_count} 条的"
+                f"优化后提示词，每条占一行，按顺序输出。"
+            )
+            messages.append({"role": "user", "content": confirm})
+
+        logger.info("批量画面提示词优化完成 (%s 条)", len(all_lines))
         yield "\n".join(all_lines)
 
     def _build_file_rows(
@@ -293,3 +354,55 @@ class PromptOptimizer:
             parts.append("光线时间线：" + " → ".join(found_times))
 
         return "\n".join(parts)
+
+    def _extract_known_entities(self, rows: list[dict[str, str]]) -> set[str]:
+        """从所有原始画面提示词中提取已知实体（角色名+场景名）作为验证白名单。"""
+        entities: set[str] = set()
+        for row in rows:
+            entities.update(re.findall(r"\[([^\[\]]+)\]", row["raw_image_prompt"]))
+        entities.add("家用轿车车内")
+        entities.add("家用轿车")
+        return entities
+
+    def _validate_batch_lines(
+        self,
+        lines: list[str],
+        known_entities: set[str],
+        batch_start_idx: int,
+    ) -> tuple[list[str], list[tuple[int, list[str]]]]:
+        """验证优化后的行是否存在污染和完整性问题。
+
+        Returns:
+            (valid_lines, issues):
+            - valid_lines: 通过验证的行
+            - issues: [(全局行号, [问题描述]), ...] 未通过验证的行
+        """
+        valid: list[str] = []
+        issues: list[tuple[int, list[str]]] = []
+
+        for i, line in enumerate(lines):
+            problems: list[str] = []
+
+            if re.match(r"^\[\d+\]\s*分镜原文：", line) or line.startswith(
+                "原始画面提示词："
+            ):
+                problems.append("输入回显(非优化后提示词)")
+
+            open_c = line.count("【")
+            close_c = line.count("】")
+            if open_c != close_c:
+                problems.append(f"【】不配对({open_c}开{close_c}闭)")
+
+            entities_in_line = set(re.findall(r"【([^】]+)】", line))
+            foreign = entities_in_line - known_entities
+            if len(foreign) >= 2:
+                problems.append(
+                    f"疑似污染(外来实体: {', '.join(sorted(foreign)[:5])})"
+                )
+
+            if problems:
+                issues.append((batch_start_idx + i, problems))
+            else:
+                valid.append(line)
+
+        return valid, issues

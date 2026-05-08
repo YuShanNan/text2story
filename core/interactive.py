@@ -511,6 +511,7 @@ def write_txt_optimization_batches(
             raw_prompt_path=raw_prompt_path,
             prompt_name=prompt_name,
             rows_per_batch=batch_size,
+            output_file=output_path,
         ):
             if isinstance(step, str):
                 result = step
@@ -554,6 +555,7 @@ def write_csv_optimization_batches(
             rows=rows,
             prompt_name=prompt_name,
             rows_per_batch=batch_size,
+            output_file=output_path,
         ):
             if isinstance(step, str):
                 result = step
@@ -610,6 +612,7 @@ def write_txt_video_prompt_batches(
             optimized_image_prompt_path=optimized_image_prompt_path,
             prompt_name=prompt_name,
             rows_per_batch=batch_size,
+            output_file=output_path,
         ):
             if isinstance(step, str):
                 result = step
@@ -653,6 +656,7 @@ def write_csv_video_prompt_batches(
             rows=rows,
             prompt_name=prompt_name,
             rows_per_batch=batch_size,
+            output_file=output_path,
         ):
             if isinstance(step, str):
                 result = step

@@ -144,11 +144,13 @@ class SrtCorrector:
             corrected_parts.append(event["content"])
         return "\n\n".join(corrected_parts)
 
-    def iter_correct_progress(self, srt_content: str, prompt_name: str = "default"):
+    def iter_correct_progress(self, srt_content: str, prompt_name: str = "default",
+                             output_file: str | None = None):
         """
         对 SRT 字幕文件进行 AI 修正，保留时间戳仅修改文案。
         srt_content: 完整的 SRT 文件内容
         prompt_name: 使用的提示词名称
+        output_file: 若指定，每批完成后立即追加写入
         返回: 修正后的完整 SRT 内容
         """
         system_prompt = load_prompt(self.prompts_dir, "srt_correction", prompt_name)
@@ -208,8 +210,17 @@ class SrtCorrector:
                 logger.warning("  提取修正摘要失败，下一批将不传递上下文")
 
             logger.info(f"  第 {i}/{total} 批修正完成")
+            content = result.strip()
+            if output_file:
+                import os as _os
+                _os.makedirs(_os.path.dirname(output_file), exist_ok=True)
+                with open(output_file, "a", encoding="utf-8-sig") as f:
+                    if i == 1:
+                        f.write(content)
+                    else:
+                        f.write("\n\n" + content)
             yield {
-                "content": result.strip(),
+                "content": content,
                 "batch_index": i,
                 "batch_total": total,
                 "batch_elapsed_seconds": time.perf_counter() - batch_start,
