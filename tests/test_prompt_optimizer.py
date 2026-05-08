@@ -260,7 +260,6 @@ class ValidationTest(unittest.TestCase):
         self.assertIn("村中大婶", entities)
         self.assertIn("王叔", entities)
         self.assertIn("画风:写实", entities)
-        self.assertIn("家用轿车车内", entities)
 
     def test_validate_clean_lines_pass(self):
         entities = {"姜春秋", "白羽村村口", "黄兴祖"}

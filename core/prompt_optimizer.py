@@ -5,7 +5,7 @@ import re
 from utils.file_utils import load_prompt, read_non_empty_lines
 from utils.logger import get_logger
 
-DEFAULT_BATCH_SIZE = 50
+DEFAULT_BATCH_SIZE = 10
 logger = get_logger(__name__)
 
 
@@ -164,6 +164,7 @@ class PromptOptimizer:
                         system_prompt=system_prompt,
                         user_content=retry_msg,
                         temperature=0.7,
+                        max_tokens=16000,
                         fallback_model=self.fallback_model,
                     )
                     new_line = extra_result.strip().split("\n")[0].strip()
@@ -198,7 +199,7 @@ class PromptOptimizer:
             if output_file:
                 os.makedirs(os.path.dirname(output_file), exist_ok=True)
                 with open(output_file, "a", encoding="utf-8-sig") as f:
-                    if completed <= len(batch_lines):
+                    if batch_index == 1:
                         f.write("\n".join(batch_lines))
                     else:
                         f.write("\n" + "\n".join(batch_lines))
@@ -360,8 +361,7 @@ class PromptOptimizer:
         entities: set[str] = set()
         for row in rows:
             entities.update(re.findall(r"\[([^\[\]]+)\]", row["raw_image_prompt"]))
-        entities.add("家用轿车车内")
-        entities.add("家用轿车")
+            entities.update(re.findall(r"【([^】]+)】", row["raw_image_prompt"]))
         return entities
 
     def _validate_batch_lines(
@@ -394,6 +394,7 @@ class PromptOptimizer:
                 problems.append(f"【】不配对({open_c}开{close_c}闭)")
 
             entities_in_line = set(re.findall(r"【([^】]+)】", line))
+            entities_in_line.update(re.findall(r"\[([^\[\]]+)\]", line))
             foreign = entities_in_line - known_entities
             if len(foreign) >= 2:
                 problems.append(

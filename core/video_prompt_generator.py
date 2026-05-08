@@ -136,7 +136,7 @@ class VideoPromptGenerator:
                 import os as _os
                 _os.makedirs(_os.path.dirname(output_file), exist_ok=True)
                 with open(output_file, "a", encoding="utf-8-sig") as f:
-                    if completed <= len(batch_lines):
+                    if batch_index == 1:
                         f.write("\n".join(batch_lines))
                     else:
                         f.write("\n" + "\n".join(batch_lines))
