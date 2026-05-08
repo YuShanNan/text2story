@@ -67,6 +67,10 @@ if !ERRORLEVEL! neq 0 goto :python_no_winget
 
 echo        正在通过 winget 安装 Python 3.13...
 winget install -e --id Python.Python.3.13 --accept-source-agreements --accept-package-agreements
+if !ERRORLEVEL! neq 0 (
+    echo        Python 3.13 安装失败，尝试安装最新 Python 3...
+    winget install -e --id Python.Python.3 --accept-source-agreements --accept-package-agreements
+)
 call :refresh_path
 
 :: 重新检测 Python
@@ -112,6 +116,14 @@ set /p PYTHON_VER= < "%TEMP%\pyver.txt"
 del "%TEMP%\pyver.txt"
 echo        找到 %PYTHON_VER% (命令: %PYTHON_CMD%)
 echo        [模式] 单模型 OpenAI 兼容接口
+%PYTHON_CMD% -m pip --version >nul 2>nul
+if !ERRORLEVEL! neq 0 (
+    echo [错误] Python 已找到，但 pip 模块不可用！
+    echo        请重新安装 Python 并确保勾选 pip 组件：
+    echo        https://www.python.org/downloads/
+    pause
+    exit /b 1
+)
 
 :: ============================================================
 ::  配置 Python 虚拟环境 + 安装依赖
@@ -242,10 +254,10 @@ goto :eof
 echo        正在刷新 PATH 环境变量...
 reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path > "%TEMP%\syspath.txt" 2>nul
 set "SYSTEM_PATH="
-for /f "tokens=2*" %%a in ('type "%TEMP%\syspath.txt"') do set "SYSTEM_PATH=%%b"
+for /f "skip=2 tokens=2*" %%a in ('type "%TEMP%\syspath.txt"') do set "SYSTEM_PATH=%%b"
 reg query "HKCU\Environment" /v Path > "%TEMP%\userpath.txt" 2>nul
 set "USER_PATH="
-for /f "tokens=2*" %%a in ('type "%TEMP%\userpath.txt"') do set "USER_PATH=%%b"
+for /f "skip=2 tokens=2*" %%a in ('type "%TEMP%\userpath.txt"') do set "USER_PATH=%%b"
 del "%TEMP%\syspath.txt" "%TEMP%\userpath.txt" 2>nul
 if defined SYSTEM_PATH (
     if defined USER_PATH (
