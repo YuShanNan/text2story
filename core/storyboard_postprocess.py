@@ -1,7 +1,7 @@
 import re
 
 
-def postprocess_storyboard(text: str, max_chars: int = 35) -> str:
+def postprocess_storyboard(text: str, max_chars: int = 30) -> str:
     """后处理分镜输出：在自然断句处拆分超过字数限制的长条目。
 
     只在句号、问号、感叹号等自然边界拆分，不在句子中间硬拆。
