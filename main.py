@@ -131,7 +131,7 @@ def correct(input_path, output_path, prompt_name):
         client=bundle.client,
         model=bundle.model,
         prompts_dir=Config.PROMPTS_DIR,
-        max_chunk_size=Config.MAX_CHUNK_SIZE,
+        max_chunk_size=Config.SRT_MAX_CHUNK_SIZE,
     )
 
     srt_content = read_file(input_path)

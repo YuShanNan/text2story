@@ -151,17 +151,27 @@ class SrtCorrector:
         srt_content: 完整的 SRT 文件内容
         prompt_name: 使用的提示词名称
         output_file: 若指定，每批完成后立即追加写入
+        当 max_chunk_size=0 时，一次性全量发送，不分批。
         返回: 修正后的完整 SRT 内容
         """
         system_prompt = load_prompt(self.prompts_dir, "srt_correction", prompt_name)
         blocks = split_srt_blocks(srt_content)
-        batches = batch_srt_blocks(blocks, self.max_chunk_size)
-        total = len(batches)
 
-        logger.info(
-            f"开始 SRT 修正 (共 {len(blocks)} 条字幕, {total} 批, "
-            f"模型: {self.model}, 提示词: {prompt_name})"
-        )
+        # max_chunk_size=0 → 全量一次性发送
+        if self.max_chunk_size == 0:
+            batches = [srt_content.strip()]
+            total = 1
+            logger.info(
+                f"开始 SRT 修正 (共 {len(blocks)} 条字幕, 一次性全量发送, "
+                f"模型: {self.model}, 提示词: {prompt_name})"
+            )
+        else:
+            batches = batch_srt_blocks(blocks, self.max_chunk_size)
+            total = len(batches)
+            logger.info(
+                f"开始 SRT 修正 (共 {len(blocks)} 条字幕, {total} 批, "
+                f"模型: {self.model}, 提示词: {prompt_name})"
+            )
 
         total_start = time.perf_counter()
         previous_correction_summary = None

@@ -1015,7 +1015,7 @@ def _run_stage_one_pass(
         client=bundle.client,
         model=bundle.model,
         prompts_dir=Config.PROMPTS_DIR,
-        max_chunk_size=Config.MAX_CHUNK_SIZE,
+        max_chunk_size=Config.SRT_MAX_CHUNK_SIZE,
     )
     corrected_srt = run_srt_correction_with_progress(
         corrector=corrector,
@@ -1397,7 +1397,7 @@ def _run_single_step_inner():
             client=bundle.client,
             model=bundle.model,
             prompts_dir=Config.PROMPTS_DIR,
-            max_chunk_size=Config.MAX_CHUNK_SIZE,
+            max_chunk_size=Config.SRT_MAX_CHUNK_SIZE,
         )
         stem = get_safe_stem(selected, Config.INPUT_DIR)
         out_dir = get_output_dir_for_file(stem)
