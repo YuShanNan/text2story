@@ -1,6 +1,4 @@
-import json
 import os
-import re
 
 from utils.file_utils import load_prompt, read_non_empty_lines
 from utils.logger import get_logger
@@ -62,9 +60,6 @@ class PromptOptimizer:
             yield ""
             return
 
-        summary = self._build_global_summary(rows)
-        known_entities = self._extract_known_entities(rows)
-
         all_rows_text = "\n\n".join(
             f"[{i + 1}] 分镜原文：{row['storyboard_text']}\n"
             f"    原始画面提示词：{row['raw_image_prompt']}"
@@ -73,7 +68,6 @@ class PromptOptimizer:
 
         first_batch_count = min(rows_per_batch, total)
         initial_user = (
-            f"{summary}\n\n"
             f"以下是 {total} 条分镜和对应的原始画面提示词。\n\n"
             f"{all_rows_text}\n\n"
             f"请先生成前 {first_batch_count} 条的优化后提示词，"
@@ -137,52 +131,6 @@ class PromptOptimizer:
                 messages.append({"role": "assistant", "content": extra_result})
                 extra_lines = [l.strip() for l in extra_result.strip().split("\n") if l.strip()]
                 batch_lines.extend(extra_lines[:missing])
-
-            # 验证输出行，对异常行逐行重试
-            batch_start_idx = completed
-            valid_lines, line_issues = self._validate_batch_lines(
-                batch_lines, known_entities, batch_start_idx,
-            )
-            for line_idx, problems in line_issues:
-                batch_rel_idx = line_idx - batch_start_idx
-                if batch_rel_idx >= len(rows):
-                    continue
-                logger.warning(
-                    "  第 %s 条疑似异常 (%s)，尝试单行重试",
-                    line_idx + 1, "; ".join(problems),
-                )
-                row = rows[line_idx]
-                retry_msg = (
-                    f"请重新生成第{line_idx + 1}条的优化后提示词。"
-                    f"注意：必须基于以下原始内容生成，不得引入其他故事的角色或场景。\n\n"
-                    f"分镜原文：{row['storyboard_text']}\n"
-                    f"原始画面提示词：{row['raw_image_prompt']}"
-                )
-                try:
-                    extra_result = self.client.chat(
-                        model=self.model,
-                        system_prompt=system_prompt,
-                        user_content=retry_msg,
-                        temperature=0.7,
-                        max_tokens=16000,
-                        fallback_model=self.fallback_model,
-                    )
-                    new_line = extra_result.strip().split("\n")[0].strip()
-                    new_valid, _ = self._validate_batch_lines(
-                        [new_line], known_entities, line_idx,
-                    )
-                    if new_valid:
-                        batch_lines[batch_rel_idx] = new_line
-                        logger.info("  第 %s 条单行重试通过", line_idx + 1)
-                    else:
-                        logger.warning(
-                            "  第 %s 条单行重试仍未通过验证，保留原行",
-                            line_idx + 1,
-                        )
-                except Exception:
-                    logger.warning(
-                        "  第 %s 条单行重试失败，保留原行", line_idx + 1,
-                    )
 
             all_lines.extend(batch_lines)
             completed += len(batch_lines)
@@ -248,162 +196,3 @@ class PromptOptimizer:
             )
         ]
 
-    def _build_global_summary(self, rows: list[dict[str, str]]) -> str:
-        """生成全局叙事摘要，用于每批 user message 的前缀。"""
-        summary_system = "你是一个叙事结构分析助手。只输出JSON，不输出其他内容。"
-
-        scenes_text = "\n".join(
-            f"[{i + 1}] {row['storyboard_text']}"
-            for i, row in enumerate(rows)
-        )
-
-        summary_user = (
-            f"请从以下 {len(rows)} 条分镜原文中提取叙事摘要，"
-            f"严格按照JSON格式输出：\n\n"
-            f"{{\n"
-            f'  "total_scenes": {len(rows)},\n'
-            f'  "characters": [{{"name": "角色名", "emotional_arc": "情绪变化简述"}}],\n'
-            f'  "location_changes": ["场景变化顺序"],\n'
-            f'  "lighting_timeline": ["光线/时间变化"],\n'
-            f'  "spatial_main_axis": "主要空间关系演变",\n'
-            f'  "scene_groups": [{{"location": "场景名", "scene_range": "第X-Y条", "key_event": "核心事件"}}]\n'
-            f"}}\n\n"
-            f"原文如下：\n{scenes_text}"
-        )
-
-        try:
-            result = self.client.chat(
-                model=self.model,
-                system_prompt=summary_system,
-                user_content=summary_user,
-                temperature=0.3,
-                max_tokens=800,
-                fallback_model=self.fallback_model,
-            )
-            return self._format_summary(result)
-        except Exception:
-            logger.warning("全局摘要生成失败，降级为规则提取")
-            return self._fallback_summary(rows)
-
-    def _format_summary(self, raw_json: str) -> str:
-        """将 AI 返回的 JSON 格式化为可嵌入 user message 的文本。"""
-        json_str = raw_json.strip()
-        if json_str.startswith("```"):
-            lines = json_str.split("\n")
-            json_str = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
-
-        try:
-            data = json.loads(json_str)
-        except json.JSONDecodeError:
-            raise ValueError(f"全局摘要JSON解析失败: {json_str[:200]}")
-
-        parts = [f"【全局叙事摘要】\n总镜数：{data.get('total_scenes', '?')}"]
-
-        chars = data.get("characters", [])
-        if chars:
-            char_lines = []
-            for c in chars:
-                name = c.get("name", "?")
-                arc = c.get("emotional_arc", "")
-                char_lines.append(f"  - {name}：{arc}")
-            parts.append("角色与情绪弧线：\n" + "\n".join(char_lines))
-
-        locs = data.get("location_changes", [])
-        if locs:
-            parts.append("场景变化：" + " → ".join(locs))
-
-        lighting = data.get("lighting_timeline", [])
-        if lighting:
-            parts.append("光线时间线：" + " → ".join(lighting))
-
-        spatial = data.get("spatial_main_axis", "")
-        if spatial:
-            parts.append(f"空间主轴：{spatial}")
-
-        groups = data.get("scene_groups", [])
-        if groups:
-            group_lines = []
-            for g in groups:
-                loc = g.get("location", "?")
-                rng = g.get("scene_range", "?")
-                evt = g.get("key_event", "")
-                group_lines.append(f"  - {loc}（{rng}）：{evt}")
-            parts.append("场景分组：\n" + "\n".join(group_lines))
-
-        return "\n".join(parts)
-
-    def _fallback_summary(self, rows: list[dict[str, str]]) -> str:
-        """规则提取叙事摘要（AI 预调用失败时的降级方案）。"""
-        all_text = " ".join(row["storyboard_text"] for row in rows)
-
-        characters = list(set(re.findall(r"【([^】]+)】", all_text)))
-
-        time_light_keywords = [
-            "清晨", "午后", "傍晚", "夕阳", "夜色", "阳光",
-            "余晖", "黄昏", "黎明", "灯光", "白天", "黑夜",
-            "日出", "日落", "夜色彻底", "天色渐暗", "天色渐亮",
-        ]
-        found_times = [w for w in time_light_keywords if w in all_text]
-        found_times.sort(key=lambda w: all_text.index(w))
-
-        parts = [
-            f"【全局叙事摘要】\n总镜数：{len(rows)}",
-        ]
-        if characters:
-            parts.append(f"角色列表：{', '.join(characters)}")
-        if found_times:
-            parts.append("光线时间线：" + " → ".join(found_times))
-
-        return "\n".join(parts)
-
-    def _extract_known_entities(self, rows: list[dict[str, str]]) -> set[str]:
-        """从所有原始画面提示词中提取已知实体（角色名+场景名）作为验证白名单。"""
-        entities: set[str] = set()
-        for row in rows:
-            entities.update(re.findall(r"\[([^\[\]]+)\]", row["raw_image_prompt"]))
-            entities.update(re.findall(r"【([^】]+)】", row["raw_image_prompt"]))
-        return entities
-
-    def _validate_batch_lines(
-        self,
-        lines: list[str],
-        known_entities: set[str],
-        batch_start_idx: int,
-    ) -> tuple[list[str], list[tuple[int, list[str]]]]:
-        """验证优化后的行是否存在污染和完整性问题。
-
-        Returns:
-            (valid_lines, issues):
-            - valid_lines: 通过验证的行
-            - issues: [(全局行号, [问题描述]), ...] 未通过验证的行
-        """
-        valid: list[str] = []
-        issues: list[tuple[int, list[str]]] = []
-
-        for i, line in enumerate(lines):
-            problems: list[str] = []
-
-            if re.match(r"^\[\d+\]\s*分镜原文：", line) or line.startswith(
-                "原始画面提示词："
-            ):
-                problems.append("输入回显(非优化后提示词)")
-
-            open_c = line.count("【")
-            close_c = line.count("】")
-            if open_c != close_c:
-                problems.append(f"【】不配对({open_c}开{close_c}闭)")
-
-            entities_in_line = set(re.findall(r"【([^】]+)】", line))
-            entities_in_line.update(re.findall(r"\[([^\[\]]+)\]", line))
-            foreign = entities_in_line - known_entities
-            if len(foreign) >= 2:
-                problems.append(
-                    f"疑似污染(外来实体: {', '.join(sorted(foreign)[:5])})"
-                )
-
-            if problems:
-                issues.append((batch_start_idx + i, problems))
-            else:
-                valid.append(line)
-
-        return valid, issues
