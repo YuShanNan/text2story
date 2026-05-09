@@ -1,3 +1,4 @@
+import os
 import time
 
 from api.openai_client import OpenAICompatClient
@@ -64,8 +65,7 @@ class StoryboardGenerator:
             logger.info(f"  第 {i}/{total} 段分镜生成完成")
             content = result.strip()
             if output_file:
-                import os as _os
-                _os.makedirs(_os.path.dirname(output_file), exist_ok=True)
+                os.makedirs(os.path.dirname(output_file), exist_ok=True)
                 with open(output_file, "a", encoding="utf-8-sig") as f:
                     if i == 1:
                         f.write(content)
