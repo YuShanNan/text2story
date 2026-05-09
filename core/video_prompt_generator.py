@@ -1,3 +1,5 @@
+import os
+
 from utils.file_utils import load_prompt, read_non_empty_lines, normalize_whitespace
 from utils.logger import get_logger
 
@@ -123,6 +125,36 @@ class VideoPromptGenerator:
             lines = [l.strip() for l in result.strip().split("\n") if l.strip()]
             needed = min(rows_per_batch, total - completed)
             batch_lines = lines[:needed]
+
+            # 补齐不足行数（最多重试2次）
+            retry_count = 0
+            while len(batch_lines) < needed and retry_count < 2 and len(batch_lines) > 0:
+                retry_count += 1
+                missing = needed - len(batch_lines)
+                miss_start = completed + len(batch_lines) + 1
+                miss_end = completed + needed
+                retry_msg = (
+                    f"上一轮只输出了 {len(batch_lines)} 条，"
+                    f"缺少第 {miss_start}-{miss_end} 条。"
+                    f"请补充生成这 {missing} 条的视频提示词，"
+                    f"每条一行，按顺序输出。"
+                )
+                logger.warning(
+                    "  第 %s 批缺少 %s 条，第 %s 次重试补齐 (第 %s-%s 条)",
+                    batch_index, missing, retry_count, miss_start, miss_end,
+                )
+                messages.append({"role": "user", "content": retry_msg})
+                extra_result = self.client.chat_multi_turn(
+                    model=self.model,
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=16000,
+                    fallback_model=self.fallback_model,
+                )
+                messages.append({"role": "assistant", "content": extra_result})
+                extra_lines = [l.strip() for l in extra_result.strip().split("\n") if l.strip()]
+                batch_lines.extend(extra_lines[:missing])
+
             all_lines.extend(batch_lines)
             completed += len(batch_lines)
 
@@ -133,8 +165,7 @@ class VideoPromptGenerator:
                    "batch_index": batch_index, "batch_total": batch_total,
                    "batch_lines": list(batch_lines)}
             if output_file:
-                import os as _os
-                _os.makedirs(_os.path.dirname(output_file), exist_ok=True)
+                os.makedirs(os.path.dirname(output_file), exist_ok=True)
                 with open(output_file, "a", encoding="utf-8-sig") as f:
                     if batch_index == 1:
                         f.write("\n".join(batch_lines))
