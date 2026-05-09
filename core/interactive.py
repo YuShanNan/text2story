@@ -763,8 +763,10 @@ def run_srt_correction_with_progress(
     corrected_parts = []
 
     blocks = split_srt_blocks(srt_content)
-    batches = batch_srt_blocks(blocks, corrector.max_chunk_size)
-    batch_total = len(batches)
+    if corrector.max_chunk_size == 0:
+        batch_total = 1  # 全量单次发送
+    else:
+        batch_total = len(batch_srt_blocks(blocks, corrector.max_chunk_size))
 
     with suppress_console_logs(), _create_step_progress(console_obj) as progress:
         task_id = progress.add_task(
@@ -772,7 +774,8 @@ def run_srt_correction_with_progress(
             total=batch_total,
             completed=0,
             step_label="SRT 修正",
-            current_label=f"共 {batch_total} 批，等待模型处理...",
+            current_label=f"共 {len(blocks)} 条字幕，一次性全量发送中..." if batch_total == 1
+                          else f"共 {batch_total} 批，等待模型处理...",
             total_elapsed="0.0s",
         )
         for event in corrector.iter_correct_progress(srt_content, prompt_name):
