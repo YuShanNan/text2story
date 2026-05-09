@@ -1,4 +1,12 @@
 @echo off
+:: 闪退保护：如果非 /k 模式启动，则自重启以保持窗口打开
+if /i "%~1" neq "/k" (
+    start "" cmd /k "%~f0" /k
+    exit /b
+)
+:: 第二次启动后剥离 /k 参数
+shift
+
 chcp 65001 >nul 2>&1
 setlocal EnableDelayedExpansion
 
