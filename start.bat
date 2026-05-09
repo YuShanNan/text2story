@@ -179,7 +179,17 @@ if !ERRORLEVEL! neq 0 (
     )
 )
 echo        Python 依赖已就绪
-echo.
+
+:: 验证核心包可导入
+echo        验证关键依赖模块...
+"%PROJECT_DIR%venv\Scripts\python.exe" -c "[__import__(p) for p in ['requests','click','rich','dotenv','charset_normalizer']]" >nul 2>&1
+if !ERRORLEVEL! neq 0 (
+    echo [错误] 依赖验证失败，部分模块未正确安装！
+    echo        检查网络后手动重试: .\venv\Scripts\pip install -r requirements.txt
+    pause
+    exit /b 1
+)
+echo        所有关键模块验证通过
 
 :: ============================================================
 ::  步骤 3: 检查配置文件和目录
