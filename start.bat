@@ -160,6 +160,17 @@ if not exist "%PROJECT_DIR%venv\Scripts\activate.bat" (
 
 :: 激活虚拟环境
 call "%PROJECT_DIR%venv\Scripts\activate.bat"
+if !ERRORLEVEL! neq 0 (
+    echo [警告] venv 激活失败（可能 Python 版本已变更），重建虚拟环境...
+    rmdir /s /q "%PROJECT_DIR%venv" 2>nul
+    %PYTHON_CMD% -m venv venv
+    if !ERRORLEVEL! neq 0 (
+        echo [错误] 重建虚拟环境失败！
+        pause
+        exit /b 1
+    )
+    call "%PROJECT_DIR%venv\Scripts\activate.bat"
+)
 
 :: 升级 pip（可选，静默执行）
 "%PROJECT_DIR%venv\Scripts\python.exe" -m pip install --upgrade pip --quiet 2>nul
@@ -234,6 +245,13 @@ cls
 
 :: 运行 main.py
 call "%PROJECT_DIR%venv\Scripts\activate.bat"
+if !ERRORLEVEL! neq 0 (
+    echo [错误] venv 激活失败，请手动重建虚拟环境：
+    echo        rmdir /s /q venv
+    echo        重新运行本脚本
+    pause
+    exit /b 1
+)
 "%PROJECT_DIR%venv\Scripts\python.exe" main.py
 set "MAIN_EXIT_CODE=!ERRORLEVEL!"
 
@@ -289,15 +307,16 @@ if !ERRORLEVEL! equ 0 (
     )
 )
 
-:: 3) py 启动器
+:: 3) py 启动器（尝试所有版本）
 py --version >nul 2>&1
 if !ERRORLEVEL! equ 0 (
-    py -3.10 --version >nul 2>&1
-    if !ERRORLEVEL! equ 0 (
-        set "PYTHON_CMD=py -3.10"
-        goto :eof
+    for %%v in (3.13 3.12 3.11 3.10) do (
+        py -%%v --version >nul 2>&1
+        if !ERRORLEVEL! equ 0 (
+            set "PYTHON_CMD=py -%%v"
+            goto :eof
+        )
     )
-    :: py 启动器但无足够版本，不设为 PYTHON_CMD
 )
 
 :: 4) 直接扫描常见安装目录
@@ -310,7 +329,29 @@ if defined PYTHON_CMD goto :eof
 call :find_python_direct 310
 if defined PYTHON_CMD goto :eof
 
-:: 5) Windows Store 别名（%LOCALAPPDATA%\Microsoft\WindowsApps\python.exe）
+:: 5) Anaconda / Miniconda 安装路径
+for %%c in (
+    "%USERPROFILE%\anaconda3\python.exe"
+    "%USERPROFILE%\miniconda3\python.exe"
+    "%USERPROFILE%\AppData\Local\anaconda3\python.exe"
+    "%ALLUSERSPROFILE%\anaconda3\python.exe"
+    "%ALLUSERSPROFILE%\miniconda3\python.exe"
+    "C:\Anaconda3\python.exe"
+    "C:\Miniconda3\python.exe"
+) do (
+    if exist %%c (
+        %%c --version >nul 2>&1
+        if !ERRORLEVEL! equ 0 (
+            %%c -c "import sys; exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
+            if !ERRORLEVEL! equ 0 (
+                set "PYTHON_CMD=%%c"
+                goto :eof
+            )
+        )
+    )
+)
+
+:: 6) Windows Store 别名（%LOCALAPPDATA%\Microsoft\WindowsApps\python.exe）
 if exist "%LOCALAPPDATA%\Microsoft\WindowsApps\python.exe" (
     "%LOCALAPPDATA%\Microsoft\WindowsApps\python.exe" --version >nul 2>&1
     if !ERRORLEVEL! equ 0 (
@@ -343,45 +384,22 @@ goto :eof
 
 :install_python_winget
 :: winget 安装链: 3.13 → 3.12 → 3.11 → 3.10
-set "WINGET_EXIT=1"
-
-echo        正在通过 winget 安装 Python 3.13...
-winget install -e --id Python.Python.3.13 --accept-source-agreements --accept-package-agreements
-if !ERRORLEVEL! equ 0 (
-    echo        Python 3.13 安装成功
-    call :refresh_path
-    call :detect_python
-    if defined PYTHON_CMD goto :eof
+:: 关键：一项安装成功后如 Python 不可识别则停止尝试（避免装 4 个 Python）
+for %%v in (3.13 3.12 3.11 3.10) do (
+    echo        正在通过 winget 安装 Python %%v...
+    winget install -e --id Python.Python.%%v --accept-source-agreements --accept-package-agreements
+    if !ERRORLEVEL! equ 0 (
+        echo        Python %%v 安装成功
+        call :refresh_path
+        call :detect_python
+        if defined PYTHON_CMD goto :eof
+        echo [警告] Python %%v 已安装但当前终端无法识别
+        echo        请关闭此窗口并重新运行启动脚本即可
+        goto :eof
+    )
+    echo        Python %%v 安装失败，继续尝试下一版本...
 )
-
-echo        尝试 Python 3.12...
-winget install -e --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements
-if !ERRORLEVEL! equ 0 (
-    echo        Python 3.12 安装成功
-    call :refresh_path
-    call :detect_python
-    if defined PYTHON_CMD goto :eof
-)
-
-echo        尝试 Python 3.11...
-winget install -e --id Python.Python.3.11 --accept-source-agreements --accept-package-agreements
-if !ERRORLEVEL! equ 0 (
-    echo        Python 3.11 安装成功
-    call :refresh_path
-    call :detect_python
-    if defined PYTHON_CMD goto :eof
-)
-
-echo        尝试 Python 3.10...
-winget install -e --id Python.Python.3.10 --accept-source-agreements --accept-package-agreements
-if !ERRORLEVEL! equ 0 (
-    echo        Python 3.10 安装成功
-    call :refresh_path
-    call :detect_python
-    if defined PYTHON_CMD goto :eof
-)
-
-echo        winget 安装失败或安装后无法识别 Python
+echo        winget 全部版本安装失败，或 winget 不可用
 goto :eof
 
 :ensure_network
@@ -446,13 +464,14 @@ if defined USER_PATH (
 )
 if defined FRESH_PATH (
     set "PATH=!FRESH_PATH!"
-    :: 追加常见的 Python 安装路径（即使注册表中没有）
-    if exist "%LOCALAPPDATA%\Programs\Python\" set "PATH=!PATH!;%LOCALAPPDATA%\Programs\Python\"
+    :: 将 Python 常用安装路径前置到 PATH 头部（避免旧版本优先）
+    set "PY_PATHS="
     for /d %%p in ("%LOCALAPPDATA%\Programs\Python\Python*") do (
-        if exist "%%p\Scripts" set "PATH=!PATH!;%%p;%%p\Scripts"
+        if exist "%%p\Scripts" set "PY_PATHS=!PY_PATHS!;%%p;%%p\Scripts"
     )
     for /d %%p in ("%ProgramFiles%\Python*") do (
-        if exist "%%p\Scripts" set "PATH=!PATH!;%%p;%%p\Scripts"
+        if exist "%%p\Scripts" set "PY_PATHS=!PY_PATHS!;%%p;%%p\Scripts"
     )
+    if defined PY_PATHS set "PATH=!PY_PATHS!;!PATH!"
 )
 goto :eof
