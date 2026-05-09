@@ -178,7 +178,7 @@ class SrtCorrector:
                 user_content = batch
 
             expected_count = len(split_srt_blocks(batch))
-            _BLOCK_RETRY = 3
+            _BLOCK_RETRY = 1
 
             for block_attempt in range(_BLOCK_RETRY + 1):
                 result = self.client.chat(
