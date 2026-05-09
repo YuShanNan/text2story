@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 :: 闪退保护：如果非 /k 模式启动，则自重启以保持窗口打开
 if /i "%~1" neq "/k" (
     start "" cmd /k "%~f0" /k
