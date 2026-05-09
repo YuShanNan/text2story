@@ -1,12 +1,13 @@
 @echo off
 rem 闪退保护：如果非 /k 模式启动，则自重启以保持窗口打开
 if /i "%~1" neq "/k" (
-    start "" cmd /k "%~f0" /k
+    start "" /d "%~dp0" cmd /k "%~f0" /k
     exit /b
 )
 rem 第二次启动后剥离 /k 参数
 shift
 
+cd /d "%~dp0"
 chcp 65001 >nul 2>&1
 setlocal EnableDelayedExpansion
 
