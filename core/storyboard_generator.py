@@ -42,7 +42,7 @@ class StoryboardGenerator:
 
         for i, chunk in enumerate(chunks, start=1):
             chunk_start = time.perf_counter()
-            logger.info(f"  生成第 {i}/{total} 段分镜... (Ctrl+C 可中断)")
+            logger.info(f"  第 {i}/{total} 段 等待模型响应... (Ctrl+C 可中断)")
 
             user_msg = chunk
             if context:

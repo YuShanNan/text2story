@@ -817,11 +817,13 @@ def run_storyboard_generation_with_progress(
         )
         for event in generator.iter_generate_progress(text, prompt_name):
             result_parts.append(event["content"])
+            elapsed = event.get("chunk_elapsed_seconds", 0)
             progress.update(
                 task_id,
                 completed=event["chunk_index"],
                 step_label="分镜生成",
-                current_label=f"第 {event['chunk_index']}/{chunk_total} 段",
+                current_label=f"第 {event['chunk_index']}/{chunk_total} 段"
+                + (f" ({elapsed:.0f}s)" if elapsed > 0 else ""),
                 total_elapsed=_format_elapsed_seconds(event["total_elapsed_seconds"]),
             )
 
