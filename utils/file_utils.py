@@ -114,12 +114,24 @@ def split_text(text: str, max_chars: int = 3000) -> list[str]:
     if current_chunk.strip():
         chunks.append(current_chunk.strip())
 
-    # 如果没有分段成功（整段文本无换行），强制按字数切割
+    # 如果没有分段成功（整段文本无换行），在标点边界切割
     if len(chunks) == 1 and len(chunks[0]) > max_chars:
         text = chunks[0]
         chunks = []
-        for i in range(0, len(text), max_chars):
-            chunks.append(text[i:i + max_chars])
+        start = 0
+        while start < len(text):
+            end = min(start + max_chars, len(text))
+            if end < len(text):
+                # 向前搜索最近的句末标点
+                cut = end
+                for ch in "。！？\n":
+                    pos = text.rfind(ch, start, end)
+                    if pos > start + max_chars // 2:
+                        cut = pos + 1
+                        break
+                end = cut
+            chunks.append(text[start:end])
+            start = end
 
     logger.debug(f"文本分段: {len(chunks)} 段")
     return chunks

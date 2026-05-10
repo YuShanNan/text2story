@@ -12,7 +12,7 @@ class StoryboardGenerator:
     """使用统一模型生成分镜脚本"""
 
     def __init__(self, client: OpenAICompatClient, model: str,
-                 prompts_dir: str, max_chunk_size: int = 3000,
+                 prompts_dir: str, max_chunk_size: int = 15000,
                  fallback_model: str = None):
         self.client = client
         self.model = model
@@ -61,7 +61,14 @@ class StoryboardGenerator:
             )
 
             context_source = result.strip()
-            context = context_source[-200:] if len(context_source) > 200 else context_source
+            if len(context_source) > 200:
+                context = context_source[-200:]
+                # 退到上一个换行处，避免从半行截断
+                nl = context_source[:-200].rfind("\n")
+                if nl > 0:
+                    context = context_source[nl + 1:]
+            else:
+                context = context_source
             logger.info(f"  第 {i}/{total} 段分镜生成完成")
             content = result.strip()
             if output_file:
@@ -73,7 +80,6 @@ class StoryboardGenerator:
                         f.write("\n" + content)
             yield {
                 "content": content,
-                "normalized_content": content,
                 "chunk_index": i,
                 "chunk_total": total,
                 "chunk_elapsed_seconds": time.perf_counter() - chunk_start,
