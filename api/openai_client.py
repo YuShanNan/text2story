@@ -30,10 +30,10 @@ class OpenAICompatClient:
             "Content-Type": "application/json",
         }
 
-    def _parse_sse_stream(self, response) -> tuple[str, str]:
+    def _parse_sse_stream(self, response) -> tuple[str, str, list[str]]:
         """
         解析 SSE 流式响应，逐块读取并拼接内容。支持 Ctrl+C 即时中断。
-        返回 (content, reasoning_content) 元组。
+        返回 (content, reasoning_content, raw_data_lines) 元组。
         """
         content_parts = []
         reasoning_parts = []
@@ -82,7 +82,7 @@ class OpenAICompatClient:
                 f"最后一条: {raw_data_lines[-1]}"
             )
 
-        return content, reasoning
+        return content, reasoning, raw_data_lines
 
     def chat_multi_turn(self, model: str, messages: list[dict],
                         temperature: float = 0.7, max_tokens: int = 4096,
@@ -136,7 +136,7 @@ class OpenAICompatClient:
                     response.raise_for_status()
                     response.encoding = "utf-8"
 
-                    content, reasoning = self._parse_sse_stream(response)
+                    content, reasoning, raw_data_lines = self._parse_sse_stream(response)
 
                     if reasoning.strip():
                         logger.info(
