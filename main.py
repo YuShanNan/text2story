@@ -169,7 +169,7 @@ def storyboard(input_path, output_path, prompt_name):
         client=bundle.client,
         model=bundle.model,
         prompts_dir=Config.PROMPTS_DIR,
-        max_chunk_size=Config.MAX_CHUNK_SIZE,
+        max_chunk_size=Config.STORYBOARD_MAX_CHUNK_SIZE,
     )
 
     text = read_file(input_path)

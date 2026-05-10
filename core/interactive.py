@@ -802,8 +802,10 @@ def run_storyboard_generation_with_progress(
     _check_model_connectivity(generator.client, generator.model, console_obj)
 
     from utils.file_utils import split_text
-    chunks = split_text(text, generator.max_chunk_size)
-    chunk_total = len(chunks)
+    if generator.max_chunk_size == 0:
+        chunk_total = 1  # 一次性全量发送
+    else:
+        chunk_total = len(split_text(text, generator.max_chunk_size))
 
     result_parts = []
     with suppress_console_logs(), _create_step_progress(console_obj) as progress:
@@ -812,7 +814,8 @@ def run_storyboard_generation_with_progress(
             total=chunk_total,
             completed=0,
             step_label="分镜生成",
-            current_label=f"共 {chunk_total} 段，等待模型处理...",
+            current_label="一次性全量发送中..." if chunk_total == 1
+                          else f"共 {chunk_total} 段，等待模型处理...",
             total_elapsed="0.0s",
         )
         for event in generator.iter_generate_progress(text, prompt_name):
@@ -1086,7 +1089,7 @@ def _run_stage_one_pass(
         client=bundle.client,
         model=bundle.model,
         prompts_dir=Config.PROMPTS_DIR,
-        max_chunk_size=Config.MAX_CHUNK_SIZE,
+        max_chunk_size=Config.STORYBOARD_MAX_CHUNK_SIZE,
     )
     sb_path = os.path.join(out_dir, f"{stem}_storyboard.txt")
 
@@ -1463,7 +1466,7 @@ def _run_single_step_inner():
             client=bundle.client,
             model=bundle.model,
             prompts_dir=Config.PROMPTS_DIR,
-            max_chunk_size=Config.MAX_CHUNK_SIZE,
+            max_chunk_size=Config.STORYBOARD_MAX_CHUNK_SIZE,
         )
         out_dir = get_output_dir_for_file(stem)
         result = run_storyboard_generation_with_progress(
