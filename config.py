@@ -12,7 +12,7 @@ class Config:
 
     # 通用配置
     MAX_RETRY = int(os.getenv("MAX_RETRY", "5"))
-    REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "300"))
+    REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "120"))
     MAX_CHUNK_SIZE = int(os.getenv("MAX_CHUNK_SIZE", "15000"))
     SRT_MAX_CHUNK_SIZE = int(os.getenv("SRT_MAX_CHUNK_SIZE", "0"))  # 0=一次性全量发送
     THINKING_ENABLED = os.getenv("THINKING_ENABLED", "false").lower() == "true"

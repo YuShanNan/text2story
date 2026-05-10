@@ -146,10 +146,16 @@ class OpenAICompatClient:
                         logger.debug(f"完整思考过程: {reasoning}")
 
                     if not content.strip():
-                        raise ValueError(
-                            f"API 返回空内容 (model={current_model}, "
-                            f"attempt={attempt}/{retry_limit_label})"
+                        logger.warning(
+                            f"API 返回空内容 (model={current_model}), 跳过重试"
+                            + (f", 思考过程: {reasoning[:200]}" if reasoning.strip() else "")
                         )
+                        if raw_data_lines:
+                            logger.debug(
+                                f"原始SSE数据(最后3条): {raw_data_lines[-3:]}"
+                            )
+                        last_error = f"API 返回空内容 (model={current_model})"
+                        break  # 空内容不重试，直接退出内层循环
 
                     if current_model != model:
                         logger.info(f"备用模型 {current_model} 调用成功")
