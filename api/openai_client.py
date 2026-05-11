@@ -123,8 +123,10 @@ class OpenAICompatClient:
                         "max_tokens": max_tokens,
                         "stream": True,
                     }
-                    if thinking_enabled:
-                        payload["thinking"] = {"type": "enabled"}
+                    payload["thinking"] = (
+                        {"type": "enabled"} if thinking_enabled
+                        else {"type": "disabled"}
+                    )
 
                     response = requests.post(
                         self.base_url,
