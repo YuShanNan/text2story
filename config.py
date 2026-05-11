@@ -14,9 +14,14 @@ class Config:
     MAX_RETRY = int(os.getenv("MAX_RETRY", "5"))
     REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "120"))
     MAX_CHUNK_SIZE = int(os.getenv("MAX_CHUNK_SIZE", "15000"))
-    SRT_MAX_CHUNK_SIZE = int(os.getenv("SRT_MAX_CHUNK_SIZE", "0"))  # 0=一次性全量发送
-    STORYBOARD_MAX_CHUNK_SIZE = int(os.getenv("STORYBOARD_MAX_CHUNK_SIZE", "0"))
+    SRT_MAX_CHUNK_SIZE = int(os.getenv("SRT_MAX_CHUNK_SIZE", "1000"))
+    STORYBOARD_MAX_CHUNK_SIZE = int(os.getenv("STORYBOARD_MAX_CHUNK_SIZE", "500"))
     THINKING_ENABLED = os.getenv("THINKING_ENABLED", "false").lower() == "true"
+    # 分步思考模式（仅适配 DeepSeek，默认继承全局 THINKING_ENABLED）
+    SRT_THINKING = os.getenv("SRT_THINKING", str(THINKING_ENABLED)).lower() == "true"
+    STORYBOARD_THINKING = os.getenv("STORYBOARD_THINKING", str(THINKING_ENABLED)).lower() == "true"
+    OPTIMIZE_THINKING = os.getenv("OPTIMIZE_THINKING", str(THINKING_ENABLED)).lower() == "true"
+    VIDEO_THINKING = os.getenv("VIDEO_THINKING", str(THINKING_ENABLED)).lower() == "true"
 
     # 路径
     PROMPTS_DIR = "prompts"

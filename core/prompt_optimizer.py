@@ -14,11 +14,13 @@ class PromptOptimizer:
         model: str,
         prompts_dir: str,
         fallback_model: str = None,
+        thinking_enabled: bool | None = None,
     ):
         self.client = client
         self.model = model
         self.prompts_dir = prompts_dir
         self.fallback_model = fallback_model
+        self.thinking_enabled = thinking_enabled
 
     def build_rows_from_files(
         self,
@@ -96,6 +98,7 @@ class PromptOptimizer:
                 temperature=0.7,
                 max_tokens=16000,
                 fallback_model=self.fallback_model,
+                thinking_enabled=self.thinking_enabled,
             )
             messages.append({"role": "assistant", "content": result})
 
@@ -127,6 +130,7 @@ class PromptOptimizer:
                     temperature=0.7,
                     max_tokens=16000,
                     fallback_model=self.fallback_model,
+                    thinking_enabled=self.thinking_enabled,
                 )
                 messages.append({"role": "assistant", "content": extra_result})
                 extra_lines = [l.strip() for l in extra_result.strip().split("\n") if l.strip()]

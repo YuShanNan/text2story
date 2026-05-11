@@ -1024,6 +1024,7 @@ def _run_stage_one_pass(
         model=bundle.model,
         prompts_dir=Config.PROMPTS_DIR,
         max_chunk_size=Config.SRT_MAX_CHUNK_SIZE,
+        thinking_enabled=Config.SRT_THINKING,
     )
     corrected_srt = run_srt_correction_with_progress(
         corrector=corrector,
@@ -1090,6 +1091,7 @@ def _run_stage_one_pass(
         model=bundle.model,
         prompts_dir=Config.PROMPTS_DIR,
         max_chunk_size=Config.STORYBOARD_MAX_CHUNK_SIZE,
+        thinking_enabled=Config.STORYBOARD_THINKING,
     )
     sb_path = os.path.join(out_dir, f"{stem}_storyboard.txt")
 
@@ -1170,6 +1172,7 @@ def run_postprocess_pipeline_for_storyboard(
         client=bundle.client,
         model=bundle.model,
         prompts_dir=Config.PROMPTS_DIR,
+        thinking_enabled=Config.OPTIMIZE_THINKING,
     )
     optimized_path = os.path.join(out_dir, f"{stem}_optimized_image_prompts.txt")
     write_txt_optimization_batches(
@@ -1208,6 +1211,7 @@ def run_postprocess_pipeline_for_storyboard(
         client=bundle.client,
         model=bundle.model,
         prompts_dir=Config.PROMPTS_DIR,
+        thinking_enabled=Config.VIDEO_THINKING,
     )
     video_prompt_path = os.path.join(out_dir, f"{stem}_video_prompts.txt")
     write_txt_video_prompt_batches(
@@ -1467,6 +1471,7 @@ def _run_single_step_inner():
             model=bundle.model,
             prompts_dir=Config.PROMPTS_DIR,
             max_chunk_size=Config.STORYBOARD_MAX_CHUNK_SIZE,
+        thinking_enabled=Config.STORYBOARD_THINKING,
         )
         out_dir = get_output_dir_for_file(stem)
         result = run_storyboard_generation_with_progress(
@@ -1494,6 +1499,7 @@ def _run_single_step_inner():
                 client=bundle.client,
                 model=bundle.model,
                 prompts_dir=Config.PROMPTS_DIR,
+                thinking_enabled=Config.OPTIMIZE_THINKING,
             )
             stem = os.path.basename(os.path.dirname(selected_storyboard))
             out_dir = get_output_dir_for_file(stem)
@@ -1520,6 +1526,7 @@ def _run_single_step_inner():
                 client=bundle.client,
                 model=bundle.model,
                 prompts_dir=Config.PROMPTS_DIR,
+                thinking_enabled=Config.OPTIMIZE_THINKING,
             )
             stem = os.path.basename(os.path.dirname(selected_storyboard))
             out_dir = get_output_dir_for_file(stem)
@@ -1557,6 +1564,7 @@ def _run_single_step_inner():
                 client=bundle.client,
                 model=bundle.model,
                 prompts_dir=Config.PROMPTS_DIR,
+                thinking_enabled=Config.VIDEO_THINKING,
             )
             stem = os.path.basename(os.path.dirname(selected_storyboard))
             out_dir = get_output_dir_for_file(stem)
@@ -1583,6 +1591,7 @@ def _run_single_step_inner():
                 client=bundle.client,
                 model=bundle.model,
                 prompts_dir=Config.PROMPTS_DIR,
+                thinking_enabled=Config.VIDEO_THINKING,
             )
             stem = os.path.basename(os.path.dirname(selected_storyboard))
             out_dir = get_output_dir_for_file(stem)

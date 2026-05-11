@@ -73,7 +73,7 @@ def get_client_bundle() -> ClientBundle:
     console.print(
         f"[dim]当前模型: {Config.MODEL_NAME} ({Config.MODEL_BASE_URL})[/]"
     )
-    console.print("[green]✓ API 配置已加载[/]")
+    console.print("[green][OK] API 配置已加载[/]")
 
     return bundle
 
@@ -111,7 +111,7 @@ def extract(input_path, output_path):
         output_path = os.path.join(get_output_dir_for_file(stem), f"{stem}_corrected.txt")
 
     write_file(output_path, text)
-    console.print(f"[green]✓ 文案提取完成: {output_path}[/]")
+    console.print(f"[green][OK] 文案提取完成: {output_path}[/]")
 
 
 @cli.command()
@@ -132,6 +132,7 @@ def correct(input_path, output_path, prompt_name):
         model=bundle.model,
         prompts_dir=Config.PROMPTS_DIR,
         max_chunk_size=Config.SRT_MAX_CHUNK_SIZE,
+        thinking_enabled=Config.SRT_THINKING,
     )
 
     srt_content = read_file(input_path)
@@ -149,7 +150,7 @@ def correct(input_path, output_path, prompt_name):
         )
 
     write_file(output_path, result)
-    console.print(f"[green]✓ SRT 修正完成: {output_path}[/]")
+    console.print(f"[green][OK] SRT 修正完成: {output_path}[/]")
 
 
 @cli.command()
@@ -170,6 +171,7 @@ def storyboard(input_path, output_path, prompt_name):
         model=bundle.model,
         prompts_dir=Config.PROMPTS_DIR,
         max_chunk_size=Config.STORYBOARD_MAX_CHUNK_SIZE,
+        thinking_enabled=Config.STORYBOARD_THINKING,
     )
 
     text = read_file(input_path)
@@ -191,7 +193,7 @@ def storyboard(input_path, output_path, prompt_name):
 
     result = postprocess_storyboard(result)
     write_file(output_path, result)
-    console.print(f"[green]✓ 分镜生成完成: {output_path}[/]")
+    console.print(f"[green][OK] 分镜生成完成: {output_path}[/]")
 
 
 @cli.command()
@@ -243,7 +245,7 @@ def prompt(input_path, mode, image_prompt_name, video_prompt_name, output_dir):
         saved_files.append(("视频提示词", path))
 
     for label, path in saved_files:
-        console.print(f"[green]✓ {label}: {path}[/]")
+        console.print(f"[green][OK] {label}: {path}[/]")
 
 
 @cli.command()
@@ -296,6 +298,7 @@ def optimize_image_prompts(
         client=bundle.client,
         model=bundle.model,
         prompts_dir=Config.PROMPTS_DIR,
+        thinking_enabled=Config.OPTIMIZE_THINKING,
     )
 
     if text_mode:
@@ -315,7 +318,7 @@ def optimize_image_prompts(
             console_obj=console,
         )
 
-        console.print(f"[green]✓ 优化后提示词: {output_path}[/]")
+        console.print(f"[green][OK] 优化后提示词: {output_path}[/]")
         return
 
     if output_path is None:
@@ -337,7 +340,7 @@ def optimize_image_prompts(
         console_obj=console,
     )
 
-    console.print(f"[green]✓ 优化后提示词表: {output_path}[/]")
+    console.print(f"[green][OK] 优化后提示词表: {output_path}[/]")
 
 
 @cli.command()
@@ -390,6 +393,7 @@ def generate_video_prompts(
         client=bundle.client,
         model=bundle.model,
         prompts_dir=Config.PROMPTS_DIR,
+        thinking_enabled=Config.VIDEO_THINKING,
     )
 
     if text_mode:
@@ -409,7 +413,7 @@ def generate_video_prompts(
             console_obj=console,
         )
 
-        console.print(f"[green]✓ 视频提示词: {output_path}[/]")
+        console.print(f"[green][OK] 视频提示词: {output_path}[/]")
         return
 
     if output_path is None:
@@ -430,7 +434,7 @@ def generate_video_prompts(
         batch_size=batch_size,
         console_obj=console,
     )
-    console.print(f"[green]✓ 视频提示词表: {output_path}[/]")
+    console.print(f"[green][OK] 视频提示词表: {output_path}[/]")
 
 
 @cli.command()
@@ -537,11 +541,11 @@ def continue_run(storyboard_paths, raw_prompt_paths, optimize_prompt, video_prom
     if multi_file:
         if failed_files:
             console.print(
-                f"\n[yellow]✓ 完成 {len(pairs) - len(failed_files)}/{len(pairs)} 个文件，"
+                f"\n[yellow][OK] 完成 {len(pairs) - len(failed_files)}/{len(pairs)} 个文件，"
                 f"失败: {', '.join(failed_files)}[/]"
             )
         else:
-            console.print(f"\n[bold green]✓ 全部完成！共处理 {len(pairs)} 个文件[/]")
+            console.print(f"\n[bold green][OK] 全部完成！共处理 {len(pairs)} 个文件[/]")
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ class FakeClient:
         temperature: float = 0.7,
         max_tokens: int = 4096,
         fallback_model: str = None,
+        thinking_enabled: bool | None = None,
     ) -> str:
         self.call_count += 1
         return f"结果{self.call_count}"
@@ -37,6 +38,7 @@ class ScriptedClient:
         temperature: float = 0.7,
         max_tokens: int = 4096,
         fallback_model: str = None,
+        thinking_enabled: bool | None = None,
     ) -> str:
         response = self.responses[self.call_count]
         self.call_count += 1

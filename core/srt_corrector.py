@@ -132,12 +132,14 @@ class SrtCorrector:
 
     def __init__(self, client: OpenAICompatClient, model: str,
                  prompts_dir: str, max_chunk_size: int = 3000,
-                 fallback_model: str = None):
+                 fallback_model: str = None,
+                 thinking_enabled: bool | None = None):
         self.client = client
         self.model = model
         self.prompts_dir = prompts_dir
         self.max_chunk_size = max_chunk_size
         self.fallback_model = fallback_model
+        self.thinking_enabled = thinking_enabled
 
     def correct(self, srt_content: str, prompt_name: str = "default") -> str:
         corrected_parts = []
@@ -198,6 +200,7 @@ class SrtCorrector:
                     user_content=user_content,
                     temperature=0.3,
                     fallback_model=self.fallback_model,
+                    thinking_enabled=self.thinking_enabled,
                 )
                 output_blocks = split_srt_blocks(result.strip())
                 if len(output_blocks) == expected_count:

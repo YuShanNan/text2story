@@ -13,12 +13,14 @@ class StoryboardGenerator:
 
     def __init__(self, client: OpenAICompatClient, model: str,
                  prompts_dir: str, max_chunk_size: int = 15000,
-                 fallback_model: str = None):
+                 fallback_model: str = None,
+                 thinking_enabled: bool | None = None):
         self.client = client
         self.model = model
         self.prompts_dir = prompts_dir
         self.max_chunk_size = max_chunk_size
         self.fallback_model = fallback_model
+        self.thinking_enabled = thinking_enabled
 
     def generate(self, text: str, prompt_name: str = "default") -> str:
         results = []
@@ -29,18 +31,28 @@ class StoryboardGenerator:
     def iter_generate_progress(self, text: str, prompt_name: str = "default",
                               output_file: str | None = None):
         system_prompt = load_prompt(self.prompts_dir, "storyboard", prompt_name)
-        chunks = split_text(text, self.max_chunk_size)
-        total = len(chunks)
 
-        logger.info(
-            f"开始生成分镜 (共 {total} 段, "
-            f"模型: {self.model}, 提示词: {prompt_name})"
-        )
+        # max_chunk_size=0 → 一次性全量发送
+        if self.max_chunk_size == 0:
+            total = 1
+            logger.info(
+                f"开始生成分镜 (一次性全量发送, "
+                f"模型: {self.model}, 提示词: {prompt_name})"
+            )
+        else:
+            chunks = split_text(text, self.max_chunk_size)
+            total = len(chunks)
+            logger.info(
+                f"开始生成分镜 (共 {total} 段, "
+                f"模型: {self.model}, 提示词: {prompt_name})"
+            )
 
         context = ""
         total_start = time.perf_counter()
 
-        for i, chunk in enumerate(chunks, start=1):
+        for i, chunk in enumerate(([text.strip()] if self.max_chunk_size == 0
+                                   else split_text(text, self.max_chunk_size)),
+                                   start=1):
             chunk_start = time.perf_counter()
             logger.info(f"  第 {i}/{total} 段 等待模型响应... (Ctrl+C 可中断)")
 
@@ -58,6 +70,7 @@ class StoryboardGenerator:
                 temperature=0.7,
                 max_tokens=16000,
                 fallback_model=self.fallback_model,
+                thinking_enabled=self.thinking_enabled,
             )
 
             context_source = result.strip()
