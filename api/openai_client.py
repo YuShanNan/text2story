@@ -147,13 +147,32 @@ class OpenAICompatClient:
 
                     if not content.strip():
                         logger.warning(
-                            f"API 返回空内容 (model={current_model}), 跳过重试"
+                            f"API 流式返回空内容 (model={current_model}), 尝试非流式..."
                             + (f", 思考过程: {reasoning[:200]}" if reasoning.strip() else "")
                         )
                         if raw_data_lines:
                             logger.debug(
                                 f"原始SSE数据(最后3条): {raw_data_lines[-3:]}"
                             )
+                        # 非流式兜底重试一次
+                        payload["stream"] = False
+                        try:
+                            response2 = requests.post(
+                                self.base_url,
+                                headers=self._headers(),
+                                json=payload,
+                                timeout=(30, self.timeout),
+                            )
+                            response2.raise_for_status()
+                            data2 = response2.json()
+                            content = (data2.get("choices", [{}])[0]
+                                       .get("message", {}).get("content", "") or "")
+                            if content.strip():
+                                logger.info("非流式调用成功")
+                                return content
+                        except Exception as e:
+                            logger.warning(f"非流式兜底也失败: {e}")
+
                         last_error = f"API 返回空内容 (model={current_model})"
                         break  # 空内容不重试，直接退出内层循环
 
