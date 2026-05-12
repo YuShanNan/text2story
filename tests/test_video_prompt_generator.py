@@ -63,7 +63,7 @@ class VideoPromptGeneratorTest(unittest.TestCase):
             client = C()
             gen = VideoPromptGenerator(client=client, model="m", prompts_dir=os.path.join(tmp_dir, "prompts"))
             r = _collect_batch(gen.generate_files_batch(storyboard_path=sb, optimized_image_prompt_path=op, prompt_name=self.PROMPT_NAME))
-        self.assertEqual("VA\nVB", r)
+        self.assertEqual("1. VA\n2. VB", r)
         self.assertEqual(1, len(client.calls))
 
     def test_builds_rows_from_files(self):
@@ -90,7 +90,7 @@ class VideoPromptGeneratorTest(unittest.TestCase):
             r = _collect_batch(gen.generate_files_batch(rows=[
                 {"s": "1", "storyboard_text": "A", "optimized_image_prompt": "P"}
             ], prompt_name=self.PROMPT_NAME))
-        self.assertEqual("视频主体描述 镜头继续推进", r)
+        self.assertEqual("1. 视频主体描述 镜头继续推进", r)
 
     def test_batch_all_rows_in_one_message(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

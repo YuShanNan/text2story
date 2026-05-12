@@ -196,10 +196,10 @@ class MainPipelineCliTest(unittest.TestCase):
                 video_text = file.read().strip()
 
             self.assertEqual(
-                "优化结果1\n优化结果2",
+                "1. 优化结果1\n2. 优化结果2",
                 optimized_text,
             )
-            self.assertEqual("视频结果1\n视频结果2", video_text)
+            self.assertEqual("1. 视频结果1\n2. 视频结果2", video_text)
 
     def test_storyboard_command_propagates_runtime_error(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

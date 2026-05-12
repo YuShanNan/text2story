@@ -136,7 +136,12 @@ class PromptOptimizer:
                 extra_lines = [l.strip() for l in extra_result.strip().split("\n") if l.strip()]
                 batch_lines.extend(extra_lines[:missing])
 
-            all_lines.extend(batch_lines)
+            numbered_batch_lines = [
+                f"{completed + j + 1}. {line}"
+                for j, line in enumerate(batch_lines)
+            ]
+
+            all_lines.extend(numbered_batch_lines)
             completed += len(batch_lines)
 
             logger.info(
@@ -146,15 +151,15 @@ class PromptOptimizer:
             progress = {
                 "completed": completed, "total": total,
                 "batch_index": batch_index, "batch_total": batch_total,
-                "batch_lines": list(batch_lines),
+                "batch_lines": list(numbered_batch_lines),
             }
             if output_file:
                 os.makedirs(os.path.dirname(output_file), exist_ok=True)
                 with open(output_file, "a", encoding="utf-8-sig") as f:
                     if batch_index == 1:
-                        f.write("\n".join(batch_lines))
+                        f.write("\n".join(numbered_batch_lines))
                     else:
-                        f.write("\n" + "\n".join(batch_lines))
+                        f.write("\n" + "\n".join(numbered_batch_lines))
             yield progress
 
             zero_growth_streak = zero_growth_streak + 1 if len(batch_lines) == 0 else 0

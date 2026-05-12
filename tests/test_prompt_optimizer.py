@@ -72,7 +72,7 @@ class PromptOptimizerTest(unittest.TestCase):
             client = C()
             opt = PromptOptimizer(client=client, model="m", prompts_dir=os.path.join(tmp_dir, "prompts"))
             r = _collect_batch(opt.optimize_files_batch(storyboard_path=sb, raw_prompt_path=rp))
-        self.assertEqual("OA\nOB", r)
+        self.assertEqual("1. OA\n2. OB", r)
         self.assertEqual(1, len(client.calls))
 
     def test_loads_default_prompt_with_back_facing_rule(self):
@@ -97,7 +97,7 @@ class PromptOptimizerTest(unittest.TestCase):
             opt = PromptOptimizer(client=FakeClient(return_value="主体画面描述 负面提示词：无衣物穿透、无多余人物"),
                                    model="m", prompts_dir=os.path.join(tmp_dir, "prompts"))
             r = _collect_batch(opt.optimize_files_batch(storyboard_path=sb, raw_prompt_path=rp))
-        self.assertEqual("主体画面描述 负面提示词：无衣物穿透、无多余人物", r)
+        self.assertEqual("1. 主体画面描述 负面提示词：无衣物穿透、无多余人物", r)
 
     def test_appends_negative_prompt_when_missing(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -109,7 +109,7 @@ class PromptOptimizerTest(unittest.TestCase):
             opt = PromptOptimizer(client=FakeClient(return_value="主体"),
                                    model="m", prompts_dir=os.path.join(tmp_dir, "prompts"))
             r = _collect_batch(opt.optimize_files_batch(storyboard_path=sb, raw_prompt_path=rp))
-        self.assertEqual("主体", r)
+        self.assertEqual("1. 主体", r)
 
     def test_builds_rows_from_files(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -139,7 +139,7 @@ class PromptOptimizerTest(unittest.TestCase):
             opt = PromptOptimizer(client=FakeClient(), model="m", prompts_dir=os.path.join(tmp_dir, "prompts"))
             r = _collect_batch(opt.optimize_files_batch(rows=[
                 {"scene_id": "1", "storyboard_text": "A", "raw_image_prompt": "P"}]))
-        self.assertEqual("优化后提示词1", r)
+        self.assertEqual("1. 优化后提示词1", r)
 
     def test_batch_single_turn(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
