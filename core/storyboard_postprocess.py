@@ -2,10 +2,9 @@ import re
 
 
 def postprocess_storyboard(text: str, max_chars: int = 30) -> str:
-    """后处理分镜输出：在自然断句处拆分超过字数限制的长条目。
+    """后处理分镜输出：在断句处拆分超过字数限制的长条目。
 
-    只在句号、问号、感叹号等自然边界拆分，不在句子中间硬拆。
-    如果找不到合适的自然边界，保留原条目不动。
+    拆分优先级：句号/问号/感叹号 → 逗号/分号 → 字符级硬拆分。
     """
     entries = _parse_entries(text)
     if not entries:
@@ -58,7 +57,7 @@ def _split_at_natural_boundary(text: str, max_chars: int) -> list[str]:
     拆分策略：
     1. 找到所有断句点（。！？）
     2. 贪心：尽量让每个片段 ≤ max_chars，但只在断句点拆分
-    3. 如果某段找不到可行断句点（即单个句子本身就超长），保留该段不动
+    3. 无断句点时，依次尝试逗号/分号拆分、字符级硬拆分
     """
     # 找出所有断句位置
     breaks = []
@@ -66,8 +65,11 @@ def _split_at_natural_boundary(text: str, max_chars: int) -> list[str]:
         breaks.append(m.end())
 
     if not breaks:
-        # 没有自然断句点，无法拆分
-        return [text]
+        # 没有自然断句点，尝试次要边界或字符级拆分
+        sub = _split_at_secondary_boundary(text, max_chars)
+        if len(sub) == 1 and _char_count(sub[0]) > max_chars:
+            sub = _split_at_character_boundary(sub[0], max_chars)
+        return sub if sub else [text]
 
     parts = []
     start = 0
@@ -104,8 +106,10 @@ def _split_at_natural_boundary(text: str, max_chars: int) -> list[str]:
     final = []
     for part in cleaned:
         if _char_count(part) > max_chars:
-            # 递归尝试（可能还有分号等较弱边界）
             sub_parts = _split_at_secondary_boundary(part, max_chars)
+            # 如果次要边界也无法拆分，使用字符级硬拆分作为最后手段
+            if len(sub_parts) == 1 and _char_count(sub_parts[0]) > max_chars:
+                sub_parts = _split_at_character_boundary(sub_parts[0], max_chars)
             final.extend(sub_parts)
         else:
             final.append(part)
@@ -137,6 +141,46 @@ def _split_at_secondary_boundary(text: str, max_chars: int) -> list[str]:
             return [left.strip(), right.strip()]
 
     return [text]
+
+
+def _split_at_character_boundary(text: str, max_chars: int) -> list[str]:
+    """在字符级别拆分超长文本（无任何标点时的最后手段）。
+
+    尽量等分，在中间位置拆分，避免产生过短的碎片。
+    """
+    if _char_count(text) <= max_chars:
+        return [text]
+
+    # 贪心按字符数均匀切分
+    parts = []
+    remaining = text
+    while remaining:
+        if _char_count(remaining) <= max_chars:
+            parts.append(remaining)
+            break
+        # 找到 max_chars 字符处作为拆分点
+        pos = _find_split_pos(remaining, max_chars)
+        if pos == 0:
+            pos = max_chars  # 极端情况，直接按字数截断
+        parts.append(remaining[:pos])
+        remaining = remaining[pos:]
+    return [p for p in parts if p.strip()]
+
+
+def _find_split_pos(text: str, max_chars: int) -> int:
+    """在 text 中找到不超过 max_chars 的最远拆分位置。"""
+    count = 0
+    last_pos = 0
+    for i, ch in enumerate(text):
+        if re.match(r'[，。！？、；：""''「」『』【】《》（）\s]', ch):
+            # 标点不计入字符数但可以作为拆分点
+            continue
+        count += 1
+        if count <= max_chars:
+            last_pos = i + 1
+        else:
+            break
+    return last_pos if last_pos > 0 else max_chars
 
 
 def _format_output(entries: list[str]) -> str:

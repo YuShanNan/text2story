@@ -45,11 +45,14 @@ class SplitAtNaturalBoundaryTest(unittest.TestCase):
         result = _split_at_natural_boundary(text, 20)
         self.assertGreater(len(result), 1)
 
-    def test_无断句点则保留原文(self):
+    def test_无断句点则字符级硬拆分(self):
         text = "这是一段没有句号问号感叹号的长文本内容连续不断"
         result = _split_at_natural_boundary(text, 20)
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0], text)
+        # 无标点但超长时，字符级硬拆分为最后手段
+        self.assertGreater(len(result), 1)
+        # 拆分后每段不超过 max_chars
+        for part in result:
+            self.assertLessEqual(_char_count(part), 20)
 
     def test_单句超长尝试逗号拆分(self):
         text = "这是一个超长句子包含很多内容但是没有句号只有逗号分隔，后面还有更多内容继续延续"
