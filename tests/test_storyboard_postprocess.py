@@ -6,6 +6,9 @@ from core.storyboard_postprocess import (
     _split_long_entries,
     _split_at_natural_boundary,
     _format_output,
+    audit_coverage,
+    _strip_punctuation,
+    _fuzzy_match,
 )
 
 
@@ -138,6 +141,76 @@ class PostprocessStoryboardTest(unittest.TestCase):
         lines = result.strip().splitlines()
         # 条目1有41字（标点不计），在句号处应该能拆分
         self.assertGreaterEqual(len(lines), 2)
+
+
+class AuditCoverageTest(unittest.TestCase):
+    def test_完全覆盖(self):
+        source = "第一行内容\n第二行内容\n第三行内容"
+        storyboard = "1. 第一行内容\n2. 第二行内容\n3. 第三行内容"
+        result = audit_coverage(source, storyboard)
+        self.assertEqual(result["ratio"], 1.0)
+        self.assertEqual(result["covered"], 3)
+        self.assertEqual(result["total"], 3)
+        self.assertEqual(result["uncovered"], [])
+        self.assertTrue(result["passed"])
+
+    def test_部分覆盖(self):
+        source = "第一行\n缺失行\n第三行"
+        storyboard = "1. 第一行\n2. 第三行"
+        result = audit_coverage(source, storyboard)
+        self.assertLess(result["ratio"], 1.0)
+        self.assertIn("缺失行", result["uncovered"])
+        self.assertFalse(result["passed"])
+
+    def test_空原文(self):
+        result = audit_coverage("", "任意内容")
+        self.assertEqual(result["ratio"], 1.0)
+        self.assertTrue(result["passed"])
+
+    def test_标点不影响匹配(self):
+        source = "你好，世界！"
+        storyboard = "1. 你好世界"
+        result = audit_coverage(source, storyboard)
+        self.assertEqual(result["ratio"], 1.0)
+
+    def test_模糊匹配轻微改写(self):
+        source = "他走过来平静道不必那么急"
+        storyboard = "1. 他走过来平静道不必那么急送亲的队伍还有几日才进城"
+        result = audit_coverage(source, storyboard)
+        self.assertEqual(result["ratio"], 1.0)
+
+    def test_默认阈值90(self):
+        # 10行中覆盖9行 = 90%，刚好通过
+        lines = [f"第{i}行" for i in range(10)]
+        source = "\n".join(lines)
+        # 最后一行缺失
+        storyboard = "\n".join(f"{i+1}. {l}" for i, l in enumerate(lines[:9]))
+        result = audit_coverage(source, storyboard)
+        self.assertEqual(result["ratio"], 0.9)
+        self.assertTrue(result["passed"])
+
+
+class FuzzyMatchTest(unittest.TestCase):
+    def test_完全匹配(self):
+        self.assertTrue(_fuzzy_match("测试内容", "这是测试内容的文本"))
+
+    def test_不匹配(self):
+        self.assertFalse(_fuzzy_match("完全不同的内容", "这是测试文本"))
+
+    def test_短片段模糊匹配(self):
+        # 短源文本用子串匹配
+        self.assertTrue(_fuzzy_match("abc", "xxabcyy"))
+
+    def test_短于阈值时直接子串匹配(self):
+        self.assertTrue(_fuzzy_match("短", "很短的文本"))
+
+
+class StripPunctuationTest(unittest.TestCase):
+    def test_去除中文标点(self):
+        self.assertEqual(_strip_punctuation("你好，世界！"), "你好世界")
+
+    def test_去除引号和空白(self):
+        self.assertEqual(_strip_punctuation('他说"你好"'), "他说你好")
 
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ from api.client_factory import create_clients, ClientBundle
 from core.srt_converter import convert_srt_to_txt
 from core.srt_corrector import SrtCorrector, batch_srt_blocks, split_srt_blocks
 from core.storyboard_generator import StoryboardGenerator
-from core.storyboard_postprocess import postprocess_storyboard
+from core.storyboard_postprocess import postprocess_storyboard, audit_coverage, generate_with_audit
 from core.prompt_generator import PromptGenerator, parse_storyboard
 from core.prompt_optimizer import PromptOptimizer
 from core.video_prompt_generator import VideoPromptGenerator
@@ -1097,16 +1097,22 @@ def _run_stage_one_pass(
     )
     sb_path = os.path.join(out_dir, f"{stem}_storyboard.txt")
 
-    storyboard_text = run_storyboard_generation_with_progress(
-        generator=sb_generator,
-        text=corrected_text,
-        prompt_name=storyboard_prompt,
-        console_obj=console,
+    storyboard_text, audit, attempts = generate_with_audit(
+        generate_fn=lambda: run_storyboard_generation_with_progress(
+            generator=sb_generator,
+            text=corrected_text,
+            prompt_name=storyboard_prompt,
+            console_obj=console,
+        ),
+        source_text=corrected_text,
     )
-    if not storyboard_text.strip():
-        raise RuntimeError("分镜生成产出空结果")
-    storyboard_text = postprocess_storyboard(storyboard_text)
     write_file(sb_path, storyboard_text)
+    if audit.get("ratio", 0) < 0.9:
+        console.print(
+            f"[yellow]⚠ 覆盖率审计: {audit['ratio']:.1%} "
+            f"({audit['covered']}/{audit['total']})，"
+            f"已重试 {attempts} 次[/]"
+        )
     console.print(f"[green]✓ 完成: {sb_path}[/]")
     saved_files.append(("分镜脚本", sb_path))
 
@@ -1119,14 +1125,22 @@ def _run_stage_one_pass(
                 "storyboard_warnings": [],
             }
         while review == "retry":
-            storyboard_text = run_storyboard_generation_with_progress(
-                generator=sb_generator,
-                text=corrected_text,
-                prompt_name=storyboard_prompt,
-                console_obj=console,
+            storyboard_text, audit, attempts = generate_with_audit(
+                generate_fn=lambda: run_storyboard_generation_with_progress(
+                    generator=sb_generator,
+                    text=corrected_text,
+                    prompt_name=storyboard_prompt,
+                    console_obj=console,
+                ),
+                source_text=corrected_text,
             )
-            storyboard_text = postprocess_storyboard(storyboard_text)
             write_file(sb_path, storyboard_text)
+            if audit.get("ratio", 0) < 0.9:
+                console.print(
+                    f"[yellow]⚠ 覆盖率审计: {audit['ratio']:.1%} "
+                    f"({audit['covered']}/{audit['total']})，"
+                    f"已重试 {attempts} 次[/]"
+                )
             console.print(f"[green]✓ 重新生成完成: {sb_path}[/]")
             review = step_review(sb_path, "AI 分镜生成")
             if review == "skip":
@@ -1479,14 +1493,23 @@ def _run_single_step_inner():
             reasoning_effort=Config.STORYBOARD_REASONING_EFFORT,
         )
         out_dir = get_output_dir_for_file(stem)
-        result = run_storyboard_generation_with_progress(
-            generator=generator,
-            text=text,
-            prompt_name=prompt_name,
-            console_obj=console,
+        result, audit, attempts = generate_with_audit(
+            generate_fn=lambda: run_storyboard_generation_with_progress(
+                generator=generator,
+                text=text,
+                prompt_name=prompt_name,
+                console_obj=console,
+            ),
+            source_text=text,
         )
         out_path = os.path.join(out_dir, f"{stem}_storyboard.txt")
         write_file(out_path, result)
+        if audit.get("ratio", 0) < 0.9:
+            console.print(
+                f"[yellow]⚠ 覆盖率审计: {audit['ratio']:.1%} "
+                f"({audit['covered']}/{audit['total']})，"
+                f"已重试 {attempts} 次[/]"
+            )
         console.print(f"[green]✓ 分镜生成完成: {out_path}[/]")
         preview_file_content(out_path)
 

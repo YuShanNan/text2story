@@ -10,7 +10,7 @@ from api.client_factory import create_clients, ClientBundle
 from core.srt_converter import convert_srt_to_txt
 from core.srt_corrector import SrtCorrector
 from core.storyboard_generator import StoryboardGenerator
-from core.storyboard_postprocess import postprocess_storyboard
+from core.storyboard_postprocess import postprocess_storyboard, generate_with_audit
 from core.prompt_generator import PromptGenerator
 from core.prompt_optimizer import PromptOptimizer, DEFAULT_BATCH_SIZE
 from core.video_prompt_generator import VideoPromptGenerator
@@ -177,15 +177,15 @@ def storyboard(input_path, output_path, prompt_name):
     )
 
     text = read_file(input_path)
-    try:
-        result = run_storyboard_generation_with_progress(
+    storyboard_text, audit, attempts = generate_with_audit(
+        generate_fn=lambda: run_storyboard_generation_with_progress(
             generator=generator,
             text=text,
             prompt_name=prompt_name,
             console_obj=console,
-        )
-    except RuntimeError as e:
-        _abort_cli(str(e), title="❌ 分镜生成失败")
+        ),
+        source_text=text,
+    )
 
     if output_path is None:
         stem = _stem_from_output_file(input_path)
@@ -193,8 +193,13 @@ def storyboard(input_path, output_path, prompt_name):
             get_output_dir_for_file(stem), f"{stem}_storyboard.txt"
         )
 
-    result = postprocess_storyboard(result)
-    write_file(output_path, result)
+    write_file(output_path, storyboard_text)
+    if audit.get("ratio", 0) < 0.9:
+        console.print(
+            f"[yellow]⚠ 覆盖率审计: {audit['ratio']:.1%} "
+            f"({audit['covered']}/{audit['total']})，"
+            f"已重试 {attempts} 次[/]"
+        )
     console.print(f"[green][OK] 分镜生成完成: {output_path}[/]")
 
 
