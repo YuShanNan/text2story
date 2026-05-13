@@ -133,6 +133,7 @@ def correct(input_path, output_path, prompt_name):
         prompts_dir=Config.PROMPTS_DIR,
         max_chunk_size=Config.SRT_MAX_CHUNK_SIZE,
         thinking_enabled=Config.SRT_THINKING,
+        reasoning_effort=Config.SRT_REASONING_EFFORT,
     )
 
     srt_content = read_file(input_path)
@@ -172,6 +173,7 @@ def storyboard(input_path, output_path, prompt_name):
         prompts_dir=Config.PROMPTS_DIR,
         max_chunk_size=Config.STORYBOARD_MAX_CHUNK_SIZE,
         thinking_enabled=Config.STORYBOARD_THINKING,
+        reasoning_effort=Config.STORYBOARD_REASONING_EFFORT,
     )
 
     text = read_file(input_path)
@@ -299,6 +301,7 @@ def optimize_image_prompts(
         model=bundle.model,
         prompts_dir=Config.PROMPTS_DIR,
         thinking_enabled=Config.OPTIMIZE_THINKING,
+        reasoning_effort=Config.OPTIMIZE_REASONING_EFFORT,
     )
 
     if text_mode:
@@ -394,6 +397,7 @@ def generate_video_prompts(
         model=bundle.model,
         prompts_dir=Config.PROMPTS_DIR,
         thinking_enabled=Config.VIDEO_THINKING,
+        reasoning_effort=Config.VIDEO_REASONING_EFFORT,
     )
 
     if text_mode:

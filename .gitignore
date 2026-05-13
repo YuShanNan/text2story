@@ -8,6 +8,7 @@ venv/
 # Local configuration
 .env
 *.env
+.setup_complete
 
 # Local working data
 output/
@@ -27,3 +28,5 @@ input/*
 # OS/editor noise
 Thumbs.db
 .DS_Store
+*副本*
+*.code-workspace

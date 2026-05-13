@@ -33,6 +33,7 @@ def create_clients() -> ClientBundle:
         max_retry=Config.MAX_RETRY,
         timeout=Config.REQUEST_TIMEOUT,
         thinking_enabled=Config.THINKING_ENABLED,
+        reasoning_effort=Config.REASONING_EFFORT,
     )
 
     logger.info("API 客户端已创建: %s (%s)", Config.MODEL_NAME, Config.MODEL_BASE_URL)

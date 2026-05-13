@@ -12,7 +12,8 @@ class OpenAICompatClient:
     """统一的 OpenAI 兼容 API 客户端"""
 
     def __init__(self, base_url: str, api_key: str, max_retry: int = 3,
-                 timeout: int = 300, thinking_enabled: bool = False):
+                 timeout: int = 300, thinking_enabled: bool = False,
+                 reasoning_effort: str = "high"):
         raw = base_url.rstrip("/")
         # 如果已是完整端点路径（/chat/completions 或 /responses），直接用，不再追加
         if raw.endswith("/chat/completions") or raw.endswith("/responses"):
@@ -23,6 +24,7 @@ class OpenAICompatClient:
         self.max_retry = max_retry
         self.timeout = timeout
         self.thinking_enabled = thinking_enabled
+        self.reasoning_effort = reasoning_effort
 
     def _headers(self) -> dict:
         return {
@@ -87,16 +89,19 @@ class OpenAICompatClient:
     def chat_multi_turn(self, model: str, messages: list[dict],
                         temperature: float = 0.7, max_tokens: int = 4096,
                         fallback_model: str = None,
-                        thinking_enabled: bool = None) -> str:
+                        thinking_enabled: bool = None, reasoning_effort: str = None) -> str:
         """
         多轮对话请求（流式模式）。
         messages 为完整的角色消息列表，如 [{"role": "system", ...}, {"role": "user", ...}, ...]。
         使用 SSE 流式传输，支持 Ctrl+C 即时中断。
         fallback_model: 备用模型，主模型全部重试失败后自动切换
         thinking_enabled: 是否启用深度思考模式（仅 DeepSeek V3.2+ 等支持）
+        reasoning_effort: 思考强度（仅 thinking enabled 时生效），high 或 max
         """
         if thinking_enabled is None:
             thinking_enabled = self.thinking_enabled
+        if reasoning_effort is None:
+            reasoning_effort = self.reasoning_effort
 
         models_to_try = [model]
         if fallback_model and fallback_model != model:
@@ -127,6 +132,8 @@ class OpenAICompatClient:
                         {"type": "enabled"} if thinking_enabled
                         else {"type": "disabled"}
                     )
+                    if thinking_enabled and reasoning_effort:
+                        payload["reasoning_effort"] = reasoning_effort
 
                     response = requests.post(
                         self.base_url,
@@ -231,7 +238,8 @@ class OpenAICompatClient:
 
     def chat(self, model: str, system_prompt: str, user_content: str,
              temperature: float = 0.7, max_tokens: int = 4096,
-             fallback_model: str = None, thinking_enabled: bool = None) -> str:
+             fallback_model: str = None, thinking_enabled: bool = None,
+             reasoning_effort: str = None) -> str:
         """单轮对话请求，委托给 chat_multi_turn。"""
         return self.chat_multi_turn(
             model=model,
@@ -243,4 +251,5 @@ class OpenAICompatClient:
             max_tokens=max_tokens,
             fallback_model=fallback_model,
             thinking_enabled=thinking_enabled,
+            reasoning_effort=reasoning_effort,
         )

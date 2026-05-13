@@ -17,6 +17,19 @@ echo.
 set "PROJECT_DIR=%~dp0"
 cd /d "%PROJECT_DIR%"
 
+rem --- 参数解析 ---
+set "FORCE_SETUP=0"
+set "FORCE_FAST=0"
+if /i "%~1"=="--setup" set "FORCE_SETUP=1"
+if /i "%~1"=="--fast"  set "FORCE_FAST=1"
+
+rem --- 哨兵检测（首次运行执行完整安装，后续跳过）---
+if "!FORCE_SETUP!"=="1" goto :full_setup
+if "!FORCE_FAST!"=="1"  goto :quick_launch
+if exist ".setup_complete" goto :quick_launch
+
+:full_setup
+
 set "PYTHON_CMD="
 set "TOTAL_STEPS=5"
 set /a "STEP=0"
@@ -213,6 +226,9 @@ if not exist "input"  mkdir "input"
 echo        所有目录已就绪
 echo.
 
+echo. > ".setup_complete"
+echo        首次安装标记已创建
+
 rem ============================================================
 
 rem ============================================================
@@ -223,6 +239,7 @@ echo ============================================================
 echo   正在启动 text2story 主程序...
 echo ============================================================
 
+:launch_app
 cls
 
 call "%PROJECT_DIR%venv\Scripts\activate.bat"
@@ -258,6 +275,28 @@ echo ============================================================
 echo.
 pause
 exit /b 0
+
+:quick_launch
+echo.
+echo ============================================================
+echo   检测到已完成首次安装，跳过环境检测，直接启动...
+echo ============================================================
+echo.
+
+rem 兜底检查：虚拟环境是否完整
+if not exist "%PROJECT_DIR%venv\Scripts\activate.bat" (
+    echo [错误] 虚拟环境不存在！请运行 start.bat --setup 重建环境
+    pause
+    exit /b 1
+)
+
+rem 兜底检查：配置文件是否存在
+if not exist ".env" (
+    copy /y ".env.example" ".env" >nul
+    echo        .env 已从模板创建
+)
+
+goto :launch_app
 
 rem ============================================================
 

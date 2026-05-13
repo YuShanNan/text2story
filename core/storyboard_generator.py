@@ -14,13 +14,15 @@ class StoryboardGenerator:
     def __init__(self, client: OpenAICompatClient, model: str,
                  prompts_dir: str, max_chunk_size: int = 15000,
                  fallback_model: str = None,
-                 thinking_enabled: bool | None = None):
+                 thinking_enabled: bool | None = None,
+                 reasoning_effort: str | None = None):
         self.client = client
         self.model = model
         self.prompts_dir = prompts_dir
         self.max_chunk_size = max_chunk_size
         self.fallback_model = fallback_model
         self.thinking_enabled = thinking_enabled
+        self.reasoning_effort = reasoning_effort
 
     def generate(self, text: str, prompt_name: str = "default") -> str:
         results = []
@@ -71,6 +73,7 @@ class StoryboardGenerator:
                 max_tokens=16000,
                 fallback_model=self.fallback_model,
                 thinking_enabled=self.thinking_enabled,
+                reasoning_effort=self.reasoning_effort,
             )
 
             context_source = result.strip()

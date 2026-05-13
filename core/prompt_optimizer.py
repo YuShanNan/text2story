@@ -15,12 +15,14 @@ class PromptOptimizer:
         prompts_dir: str,
         fallback_model: str = None,
         thinking_enabled: bool | None = None,
+        reasoning_effort: str | None = None,
     ):
         self.client = client
         self.model = model
         self.prompts_dir = prompts_dir
         self.fallback_model = fallback_model
         self.thinking_enabled = thinking_enabled
+        self.reasoning_effort = reasoning_effort
 
     def build_rows_from_files(
         self,
@@ -99,6 +101,7 @@ class PromptOptimizer:
                 max_tokens=16000,
                 fallback_model=self.fallback_model,
                 thinking_enabled=self.thinking_enabled,
+                reasoning_effort=self.reasoning_effort,
             )
             messages.append({"role": "assistant", "content": result})
 
@@ -131,6 +134,7 @@ class PromptOptimizer:
                     max_tokens=16000,
                     fallback_model=self.fallback_model,
                     thinking_enabled=self.thinking_enabled,
+                    reasoning_effort=self.reasoning_effort,
                 )
                 messages.append({"role": "assistant", "content": extra_result})
                 extra_lines = [l.strip() for l in extra_result.strip().split("\n") if l.strip()]
