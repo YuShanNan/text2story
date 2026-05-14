@@ -79,7 +79,7 @@ def get_client_bundle() -> ClientBundle:
 
 
 @click.group(invoke_without_command=True)
-@click.version_option(version="1.3.4", prog_name="text2story")
+@click.version_option(version="1.3.7", prog_name="text2story")
 @click.pass_context
 def cli(ctx):
     """SRT 字幕 → AI 分镜 → 提示词生成工具
