@@ -62,7 +62,9 @@ class StoryboardGenerator:
             if context:
                 user_msg = (
                     f"[上文分镜摘要]\n{context}\n\n"
-                    f"[请继续为以下文案生成分镜，编号接续上文]\n{chunk}"
+                    f"[请继续为以下文案生成分镜，编号接续上文。"
+                    f"注意：只处理当前文案的内容，不得根据上文摘要自行补全、续写或改写当前文案中不存在的文字。]\n"
+                    f"{chunk}"
                 )
 
             result = self.client.chat(
