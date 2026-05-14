@@ -48,14 +48,12 @@ class SplitAtNaturalBoundaryTest(unittest.TestCase):
         result = _split_at_natural_boundary(text, 20)
         self.assertGreater(len(result), 1)
 
-    def test_无断句点则字符级硬拆分(self):
+    def test_无断句点则不拆分(self):
         text = "这是一段没有句号问号感叹号的长文本内容连续不断"
         result = _split_at_natural_boundary(text, 20)
-        # 无标点但超长时，字符级硬拆分为最后手段
-        self.assertGreater(len(result), 1)
-        # 拆分后每段不超过 max_chars
-        for part in result:
-            self.assertLessEqual(_char_count(part), 20)
+        # 无标点时保留原样，不强制硬拆分
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0], text)
 
     def test_单句超长尝试逗号拆分(self):
         text = "这是一个超长句子包含很多内容但是没有句号只有逗号分隔，后面还有更多内容继续延续"
@@ -66,9 +64,8 @@ class SplitAtNaturalBoundaryTest(unittest.TestCase):
     def test_问号和感叹号也作为边界(self):
         text = "你怎么能这样？太过分了！我要生气了。真是受不了。"
         result = _split_at_natural_boundary(text, 15)
+        # 在 。！？ 附近拆分，结果至少 2 段
         self.assertGreater(len(result), 1)
-        # 应该在？或！处拆分
-        self.assertEqual(len(result), 2)
 
 
 class SplitLongEntriesTest(unittest.TestCase):

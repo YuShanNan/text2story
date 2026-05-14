@@ -56,69 +56,53 @@ def _split_long_entries(entries: list[str], max_chars: int) -> list[str]:
 
 
 def _split_at_natural_boundary(text: str, max_chars: int) -> list[str]:
-    """在自然断句处拆分长文本。返回拆分后的多个片段。
+    """在 30 字附近最合适的标点处拆分长文本。
 
-    拆分策略：
-    1. 找到所有断句点（。！？）
-    2. 贪心：尽量让每个片段 ≤ max_chars，但只在断句点拆分
-    3. 无断句点时，依次尝试逗号/分号拆分、字符级硬拆分
+    优先级：
+    1. 找最靠近 max_chars 的 。！？，找到了就断开（允许略超 max_chars）
+    2. 没有句号时，找最靠近 max_chars 的 ，； 断开
+    3. 附近无合适标点，保留原样
     """
-    # 找出所有断句位置
-    breaks = []
-    for m in re.finditer(r'[。！？]', text):
-        breaks.append(m.end())
-
-    if not breaks:
-        # 没有自然断句点，尝试次要边界或字符级拆分
-        sub = _split_at_secondary_boundary(text, max_chars)
-        if len(sub) == 1 and _char_count(sub[0]) > max_chars:
-            sub = _split_at_character_boundary(sub[0], max_chars)
-        return sub if sub else [text]
-
-    parts = []
-    start = 0
-
-    for i, pos in enumerate(breaks):
-        segment = text[start:pos]
-        # 看接下来到下一个断句点（或结尾）的内容
-        if i + 1 < len(breaks):
-            next_pos = breaks[i + 1]
-        else:
-            next_pos = len(text)
-
-        combined = text[start:next_pos]
-
-        if _char_count(combined) > max_chars:
-            # 当前到下一个断句点会超长，在当前断句点拆分
-            parts.append(segment)
-            start = pos
-        elif i == len(breaks) - 1:
-            # 最后一个断句点，把剩余内容作为一个片段
-            parts.append(text[start:])
-
-    # 去空白检查
-    cleaned = []
-    for p in parts:
-        p = p.strip()
-        if p:
-            cleaned.append(p)
-
-    if not cleaned:
+    if _char_count(text) <= max_chars:
         return [text]
 
-    # 检查是否有片段仍然超长（单句超长的情况）
-    final = []
-    for part in cleaned:
-        if _char_count(part) > max_chars:
-            sub_parts = _split_at_secondary_boundary(part, max_chars)
-            # 如果次要边界也无法拆分，使用字符级硬拆分作为最后手段
-            if len(sub_parts) == 1 and _char_count(sub_parts[0]) > max_chars:
-                sub_parts = _split_at_character_boundary(sub_parts[0], max_chars)
-            final.extend(sub_parts)
-        else:
-            final.append(part)
+    # 收集所有标点位置 (字符计数位置, 文本索引, 标点字符)
+    puncts = []
+    char_count = 0
+    for i, ch in enumerate(text):
+        if ch in '。！？，；':
+            puncts.append((char_count, i, ch))
+        if ch not in '，。！？、；：""''「」『』【】《》（）\s':
+            char_count += 1
 
-    return final if final else [text]
+    if not puncts:
+        return [text]
+
+    MIN_REMAINING = 8  # 拆分后剩余文本最少保留 8 个非标点字符
+
+    # 优先级 1：按距离排序，逐个尝试 。！？，取第一个满足 MIN_REMAINING 的
+    periods = sorted(
+        [(pos, idx) for pos, idx, ch in puncts if ch in '。！？'],
+        key=lambda x: abs(x[0] - max_chars),
+    )
+    for pos, idx in periods:
+        remaining = text[idx + 1:]
+        if _char_count(remaining) >= MIN_REMAINING:
+            left = text[:idx + 1]
+            return [left] + _split_at_natural_boundary(remaining, max_chars)
+
+    # 优先级 2：按距离排序，逐个尝试 ，；，取第一个满足 MIN_REMAINING 的
+    commas = sorted(
+        [(pos, idx) for pos, idx, ch in puncts if ch in '，；'],
+        key=lambda x: abs(x[0] - max_chars),
+    )
+    for pos, idx in commas:
+        remaining = text[idx + 1:]
+        if _char_count(remaining) >= MIN_REMAINING:
+            left = text[:idx + 1]
+            return [left] + _split_at_natural_boundary(remaining, max_chars)
+
+    return [text]
 
 
 def _split_at_secondary_boundary(text: str, max_chars: int) -> list[str]:

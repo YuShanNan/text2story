@@ -31,7 +31,7 @@ class OpenAICompatClientRetryTest(unittest.TestCase):
                     response,
                 ],
             ) as post,
-            patch.object(client, "_parse_sse_stream", return_value="成功内容"),
+            patch.object(client, "_parse_sse_stream", return_value=("成功内容", "", [])),
             patch("api.openai_client.time.sleep") as sleep,
         ):
             result = client.chat(
