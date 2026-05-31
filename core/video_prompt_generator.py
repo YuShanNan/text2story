@@ -31,34 +31,20 @@ class VideoPromptGenerator:
     def build_rows_from_files(
         self,
         storyboard_path: str,
-        optimized_image_prompt_path: str,
     ) -> list[dict[str, str]]:
         storyboard_lines = read_non_empty_lines(storyboard_path)
-        optimized_image_prompt_lines = read_non_empty_lines(
-            optimized_image_prompt_path
-        )
-
-        if len(storyboard_lines) != len(optimized_image_prompt_lines):
-            raise ValueError(
-                "分镜段数与优化后生图提示词段数不一致: "
-                f"{len(storyboard_lines)} != {len(optimized_image_prompt_lines)}"
-            )
 
         return [
             {
                 "scene_id": str(index),
                 "storyboard_text": storyboard_line,
-                "optimized_image_prompt": optimized_image_prompt_line,
             }
-            for index, (storyboard_line, optimized_image_prompt_line) in enumerate(
-                zip(storyboard_lines, optimized_image_prompt_lines), start=1
-            )
+            for index, storyboard_line in enumerate(storyboard_lines, start=1)
         ]
 
     def generate_files_batch(
         self,
         storyboard_path: str | None = None,
-        optimized_image_prompt_path: str | None = None,
         rows: list[dict[str, str]] | None = None,
         prompt_name: str = "default",
         rows_per_batch: int = 50,
@@ -72,13 +58,11 @@ class VideoPromptGenerator:
         若指定 output_file，每批完成后立即追加写入。
         """
         if rows is None:
-            if storyboard_path is None or optimized_image_prompt_path is None:
+            if storyboard_path is None:
                 raise ValueError(
-                    "必须提供 rows 参数，或同时提供 storyboard_path + optimized_image_prompt_path"
+                    "必须提供 rows 参数，或提供 storyboard_path"
                 )
-            rows = self.build_rows_from_files(
-                storyboard_path, optimized_image_prompt_path
-            )
+            rows = self.build_rows_from_files(storyboard_path)
 
         system_prompt = load_prompt(
             self.prompts_dir, "video_prompt_from_image", prompt_name
@@ -86,14 +70,13 @@ class VideoPromptGenerator:
         total = len(rows)
 
         all_rows_text = "\n\n".join(
-            f"[{i + 1}] 分镜原文：{row['storyboard_text']}\n"
-            f"    优化后生图提示词：{row['optimized_image_prompt']}"
+            f"[{i + 1}] 分镜原文：{row['storyboard_text']}"
             for i, row in enumerate(rows)
         )
 
         first_batch_count = min(rows_per_batch, total)
         initial_user = (
-            f"以下是 {total} 条分镜和对应的优化后生图提示词。\n\n"
+            f"以下是 {total} 条分镜原文。\n\n"
             f"{all_rows_text}\n\n"
             f"请先生成前 {first_batch_count} 条的视频提示词，"
             f"每条占一行，按顺序输出。完成后不要输出其他内容。"
