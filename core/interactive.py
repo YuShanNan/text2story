@@ -151,7 +151,7 @@ def _print_saved_files_summary(
 def get_main_menu_choices() -> list:
     return [
         {"name": "🚀 阶段一完整流水线（SRT → 修正 → 提取 → 分镜）", "value": "pipeline_stage_one"},
-        {"name": "✨ 阶段二完整流水线（分镜 → 画面提示词优化 → 视频提示词生成）", "value": "pipeline_stage_two"},
+        {"name": "✨ 阶段二完整流水线（分镜 → 画面提示词优化 + 视频提示词生成）", "value": "pipeline_stage_two"},
         {"name": "🔧 单步执行（从任意步骤开始）", "value": "single"},
         {"name": "⚙️ 配置管理（查看/修改 .env 配置）", "value": "config"},
         Separator(),
@@ -1136,7 +1136,7 @@ def run_postprocess_pipeline_for_storyboard(
 
     console.print(Panel(
         f"[bold]分镜文件: {rel_name}[/]\n"
-        "阶段: 2/2（画面提示词优化 → 视频提示词生成）\n"
+        "阶段: 2/2（画面提示词优化 + 视频提示词生成）\n"
         f"模型: {bundle.model}",
         title="✨ 开始后处理",
         border_style="magenta",
