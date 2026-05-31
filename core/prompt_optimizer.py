@@ -27,14 +27,12 @@ class PromptOptimizer:
     def build_rows_from_files(
         self,
         storyboard_path: str,
-        raw_prompt_path: str,
     ) -> list[dict[str, str]]:
-        return self._build_file_rows(storyboard_path, raw_prompt_path)
+        return self._build_file_rows(storyboard_path)
 
     def optimize_files_batch(
         self,
         storyboard_path: str | None = None,
-        raw_prompt_path: str | None = None,
         rows: list[dict[str, str]] | None = None,
         prompt_name: str = "default",
         rows_per_batch: int = 50,
@@ -49,11 +47,11 @@ class PromptOptimizer:
         若指定 output_file，每批完成后立即追加写入。
         """
         if rows is None:
-            if storyboard_path is None or raw_prompt_path is None:
+            if storyboard_path is None:
                 raise ValueError(
-                    "必须提供 rows 参数，或同时提供 storyboard_path + raw_prompt_path"
+                    "必须提供 rows 参数，或提供 storyboard_path"
                 )
-            rows = self._build_file_rows(storyboard_path, raw_prompt_path)
+            rows = self._build_file_rows(storyboard_path)
 
         system_prompt = load_prompt(
             self.prompts_dir, "image_prompt_optimize", prompt_name
@@ -65,14 +63,13 @@ class PromptOptimizer:
             return
 
         all_rows_text = "\n\n".join(
-            f"[{i + 1}] 分镜原文：{row['storyboard_text']}\n"
-            f"    原始画面提示词：{row['raw_image_prompt']}"
+            f"[{i + 1}] 分镜原文：{row['storyboard_text']}"
             for i, row in enumerate(rows)
         )
 
         first_batch_count = min(rows_per_batch, total)
         initial_user = (
-            f"以下是 {total} 条分镜和对应的原始画面提示词。\n\n"
+            f"以下是 {total} 条分镜原文。\n\n"
             f"{all_rows_text}\n\n"
             f"请先生成前 {first_batch_count} 条的优化后提示词，"
             f"每条占一行，按顺序输出。完成后不要输出其他内容。"
@@ -188,24 +185,14 @@ class PromptOptimizer:
     def _build_file_rows(
         self,
         storyboard_path: str,
-        raw_prompt_path: str,
     ) -> list[dict[str, str]]:
         storyboard_lines = read_non_empty_lines(storyboard_path)
-        raw_prompt_lines = read_non_empty_lines(raw_prompt_path)
-
-        if len(storyboard_lines) != len(raw_prompt_lines):
-            raise ValueError(
-                f"分镜段数与提示词段数不一致: {len(storyboard_lines)} != {len(raw_prompt_lines)}"
-            )
 
         return [
             {
                 "scene_id": str(index),
                 "storyboard_text": storyboard_line,
-                "raw_image_prompt": raw_prompt_line,
             }
-            for index, (storyboard_line, raw_prompt_line) in enumerate(
-                zip(storyboard_lines, raw_prompt_lines), start=1
-            )
+            for index, storyboard_line in enumerate(storyboard_lines, start=1)
         ]
 
