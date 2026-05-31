@@ -484,7 +484,6 @@ def get_single_step_choices() -> list:
 def write_txt_optimization_batches(
     optimizer: PromptOptimizer,
     storyboard_path: str,
-    raw_prompt_path: str,
     prompt_name: str,
     output_path: str,
     batch_size: int,
@@ -508,7 +507,6 @@ def write_txt_optimization_batches(
         result = ""
         for step in optimizer.optimize_files_batch(
             storyboard_path=storyboard_path,
-            raw_prompt_path=raw_prompt_path,
             prompt_name=prompt_name,
             rows_per_batch=batch_size,
             output_file=output_path,
@@ -572,7 +570,6 @@ def write_csv_optimization_batches(
         {
             "scene_id": rows[i]["scene_id"],
             "storyboard_text": rows[i]["storyboard_text"],
-            "raw_image_prompt": rows[i]["raw_image_prompt"],
             "optimized_image_prompt": line,
             "notes_cn": "",
         }
@@ -585,7 +582,6 @@ def write_csv_optimization_batches(
 def write_txt_video_prompt_batches(
     generator: VideoPromptGenerator,
     storyboard_path: str,
-    optimized_image_prompt_path: str,
     prompt_name: str,
     output_path: str,
     batch_size: int,
@@ -609,7 +605,6 @@ def write_txt_video_prompt_batches(
         result = ""
         for step in generator.generate_files_batch(
             storyboard_path=storyboard_path,
-            optimized_image_prompt_path=optimized_image_prompt_path,
             prompt_name=prompt_name,
             rows_per_batch=batch_size,
             output_file=output_path,
@@ -673,7 +668,6 @@ def write_csv_video_prompt_batches(
         {
             "scene_id": rows[i]["scene_id"],
             "storyboard_text": rows[i]["storyboard_text"],
-            "optimized_image_prompt": rows[i]["optimized_image_prompt"],
             "video_prompt": line,
             "notes_cn": "",
         }

@@ -28,6 +28,7 @@ class FakePromptClient:
         max_tokens: int = 4096,
         fallback_model: str = None,
         thinking_enabled: bool = None,
+        reasoning_effort: str = None,
     ) -> str:
         self.call_count += 1
         return f"优化后提示词{self.call_count}"
@@ -66,6 +67,7 @@ class FakeVideoPromptClient:
         max_tokens: int = 4096,
         fallback_model: str = None,
         thinking_enabled: bool = None,
+        reasoning_effort: str = None,
     ) -> str:
         self.call_count += 1
         return f"视频提示词{self.call_count}"
@@ -105,14 +107,10 @@ class OptimizeCliTest(unittest.TestCase):
                 file.write("你是提示词优化器")
 
             storyboard_path = os.path.join(tmp_dir, "storyboard.txt")
-            raw_prompt_path = os.path.join(tmp_dir, "raw_prompts.txt")
             output_path = os.path.join(tmp_dir, "optimized.txt")
 
             with open(storyboard_path, "w", encoding="utf-8") as file:
                 file.write("1. 第一段分镜\n\n2. 第二段分镜\n")
-
-            with open(raw_prompt_path, "w", encoding="utf-8") as file:
-                file.write("原始提示词一\n原始提示词二\n")
 
             runner = CliRunner()
             fake_bundle = SimpleNamespace(
@@ -130,8 +128,6 @@ class OptimizeCliTest(unittest.TestCase):
                         "optimize-image-prompts",
                         "--storyboard",
                         storyboard_path,
-                        "--raw-prompts",
-                        raw_prompt_path,
                         "--batch-size",
                         "1",
                         "--output",
@@ -161,7 +157,6 @@ class OptimizeCliTest(unittest.TestCase):
                 file.write("你是提示词优化器")
 
             storyboard_table_path = os.path.join(tmp_dir, "storyboard_table.csv")
-            image_prompt_table_path = os.path.join(tmp_dir, "image_prompt_table.csv")
             output_path = os.path.join(tmp_dir, "optimized.csv")
 
             with open(
@@ -172,15 +167,6 @@ class OptimizeCliTest(unittest.TestCase):
                 )
                 writer.writeheader()
                 writer.writerow({"scene_id": "1", "storyboard_text": "第一段分镜"})
-
-            with open(
-                image_prompt_table_path, "w", encoding="utf-8-sig", newline=""
-            ) as file:
-                writer = csv.DictWriter(
-                    file, fieldnames=["scene_id", "raw_image_prompt"]
-                )
-                writer.writeheader()
-                writer.writerow({"scene_id": "1", "raw_image_prompt": "原始提示词一"})
 
             runner = CliRunner()
             fake_bundle = SimpleNamespace(
@@ -198,8 +184,6 @@ class OptimizeCliTest(unittest.TestCase):
                         "optimize-image-prompts",
                         "--storyboard-table",
                         storyboard_table_path,
-                        "--image-prompt-table",
-                        image_prompt_table_path,
                         "--batch-size",
                         "1",
                         "--output",
@@ -217,7 +201,6 @@ class OptimizeCliTest(unittest.TestCase):
                 {
                     "scene_id": "1",
                     "storyboard_text": "第一段分镜",
-                    "raw_image_prompt": "原始提示词一",
                     "optimized_image_prompt": "1. 优化后提示词2",
                     "notes_cn": "",
                 }
@@ -243,16 +226,10 @@ class OptimizeCliTest(unittest.TestCase):
                 file.write("你是视频提示词生成器")
 
             storyboard_path = os.path.join(tmp_dir, "storyboard.txt")
-            optimized_image_prompt_path = os.path.join(
-                tmp_dir, "optimized_image_prompts.txt"
-            )
             output_path = os.path.join(tmp_dir, "video_prompts.txt")
 
             with open(storyboard_path, "w", encoding="utf-8") as file:
                 file.write("1. 第一段分镜\n\n2. 第二段分镜\n")
-
-            with open(optimized_image_prompt_path, "w", encoding="utf-8") as file:
-                file.write("优化后生图提示词一\n优化后生图提示词二\n")
 
             runner = CliRunner()
             fake_bundle = SimpleNamespace(
@@ -270,8 +247,6 @@ class OptimizeCliTest(unittest.TestCase):
                         "generate-video-prompts",
                         "--storyboard",
                         storyboard_path,
-                        "--optimized-image-prompts",
-                        optimized_image_prompt_path,
                         "--prompt",
                         "2026.4.13-带商业运镜测试简化版2(1)",
                         "--batch-size",
@@ -306,7 +281,6 @@ class OptimizeCliTest(unittest.TestCase):
                 file.write("你是视频提示词生成器")
 
             storyboard_table_path = os.path.join(tmp_dir, "storyboard_table.csv")
-            image_prompt_table_path = os.path.join(tmp_dir, "image_prompt_table.csv")
             output_path = os.path.join(tmp_dir, "video_prompts.csv")
 
             with open(
@@ -317,20 +291,6 @@ class OptimizeCliTest(unittest.TestCase):
                 )
                 writer.writeheader()
                 writer.writerow({"scene_id": "1", "storyboard_text": "第一段分镜"})
-
-            with open(
-                image_prompt_table_path, "w", encoding="utf-8-sig", newline=""
-            ) as file:
-                writer = csv.DictWriter(
-                    file, fieldnames=["scene_id", "optimized_image_prompt"]
-                )
-                writer.writeheader()
-                writer.writerow(
-                    {
-                        "scene_id": "1",
-                        "optimized_image_prompt": "优化后生图提示词一",
-                    }
-                )
 
             runner = CliRunner()
             fake_bundle = SimpleNamespace(
@@ -348,8 +308,6 @@ class OptimizeCliTest(unittest.TestCase):
                         "generate-video-prompts",
                         "--storyboard-table",
                         storyboard_table_path,
-                        "--image-prompt-table",
-                        image_prompt_table_path,
                         "--prompt",
                         "2026.4.13-带商业运镜测试简化版2(1)",
                         "--batch-size",
@@ -369,7 +327,6 @@ class OptimizeCliTest(unittest.TestCase):
                 {
                     "scene_id": "1",
                     "storyboard_text": "第一段分镜",
-                    "optimized_image_prompt": "优化后生图提示词一",
                     "video_prompt": "1. 视频提示词2",
                     "notes_cn": "",
                 }
