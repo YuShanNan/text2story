@@ -397,8 +397,8 @@ def select_mode() -> str:
 
 def select_optimization_input_mode(
     workflow_label: str = "画面提示词优化",
-    txt_label: str = "storyboard.txt → 优化/视频提示词.txt",
-    csv_label: str = "storyboard.txt → 优化/视频提示词.csv",
+    txt_label: str = "分镜 TXT → 提示词 TXT",
+    csv_label: str = "分镜 TXT → 提示词 CSV",
 ) -> str:
     """交互式选择输入流程的 TXT/CSV 模式"""
     choice = _execute_prompt(inquirer.select(
@@ -445,8 +445,8 @@ def get_single_step_choices() -> list:
         {"name": "📝 步骤 1: SRT AI 修正（输入: .srt 文件，输出: 修正后 .srt）", "value": 1},
         {"name": "📄 步骤 2: 修正后 SRT → TXT 提取（输入: 修正后 .srt）", "value": 2},
         {"name": "🎬 步骤 3: AI 分镜生成（输入: 修正后 .txt 文件）", "value": 3},
-        {"name": "✨ 步骤 4: 画面提示词优化（进入后选择 TXT / CSV）", "value": 4},
-        {"name": "🎥 步骤 5: 视频提示词生成（进入后选择 TXT / CSV）", "value": 5},
+        {"name": "✨ 步骤 4: 画面提示词优化（输入: 分镜 TXT → 输出: TXT / CSV）", "value": 4},
+        {"name": "🎥 步骤 5: 视频提示词生成（输入: 分镜 TXT → 输出: TXT / CSV）", "value": 5},
     ]
 
 
@@ -1484,8 +1484,8 @@ def _run_single_step_inner():
     elif step == 5:
         generation_mode = select_optimization_input_mode(
             workflow_label="视频提示词生成",
-            txt_label="storyboard.txt → video_prompts.txt",
-            csv_label="storyboard.txt → video_prompts.csv",
+            txt_label="分镜 TXT → 视频提示词 TXT",
+            csv_label="分镜 TXT → 视频提示词 CSV",
         )
 
         if generation_mode == "txt":
