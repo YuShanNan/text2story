@@ -397,10 +397,10 @@ def select_mode() -> str:
 
 def select_optimization_input_mode(
     workflow_label: str = "画面提示词优化",
-    txt_label: str = "storyboard.txt + 原始提示词.txt",
-    csv_label: str = "storyboard_table.csv + image_prompt_table.csv",
+    txt_label: str = "storyboard.txt → 优化/视频提示词.txt",
+    csv_label: str = "storyboard.txt → 优化/视频提示词.csv",
 ) -> str:
-    """交互式选择双输入流程的 TXT/CSV 模式"""
+    """交互式选择输入流程的 TXT/CSV 模式"""
     choice = _execute_prompt(inquirer.select(
         message=f"请选择{workflow_label}输入模式：",
         choices=[
@@ -951,7 +951,7 @@ def run_pipeline_for_file(
 
     console.print(
         "\n[bold green]✓ 阶段一完成：已产出分镜。[/]\n"
-        "[dim]请在准备好原始画面提示词文件后，再通过阶段二完整流水线或单步执行继续。[/]"
+        "[dim]请通过阶段二完整流水线或单步执行继续。[/]"
     )
 
     # 单文件完成汇总
