@@ -33,6 +33,7 @@ class FakeBatchOptimizer:
         rows=None,
         prompt_name="default",
         rows_per_batch=50,
+        output_file=None,
     ):
         total = len(rows) if rows else 2
         yield {"completed": total, "total": total, "batch_index": 1, "batch_total": 1}
@@ -145,8 +146,8 @@ class InteractiveBatchHelpersTest(unittest.TestCase):
             final_rows = write_csv_video_prompt_batches(
                 generator=FakeBatchGenerator(),
                 rows=[
-                    {"scene_id": "1", "storyboard_text": "第一段分镜", "optimized_image_prompt": "优化后生图提示词一"},
-                    {"scene_id": "2", "storyboard_text": "第二段分镜", "optimized_image_prompt": "优化后生图提示词二"},
+                    {"scene_id": "1", "storyboard_text": "第一段分镜"},
+                    {"scene_id": "2", "storyboard_text": "第二段分镜"},
                 ],
                 prompt_name="default",
                 output_path="video_prompts.csv",
