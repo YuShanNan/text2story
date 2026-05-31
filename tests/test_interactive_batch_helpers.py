@@ -30,7 +30,6 @@ class FakeBatchOptimizer:
     def optimize_files_batch(
         self,
         storyboard_path=None,
-        raw_prompt_path=None,
         rows=None,
         prompt_name="default",
         rows_per_batch=50,
@@ -48,7 +47,6 @@ class InteractiveBatchHelpersTest(unittest.TestCase):
             final_text = write_txt_optimization_batches(
                 optimizer=FakeBatchOptimizer(),
                 storyboard_path="storyboard.txt",
-                raw_prompt_path="raw.txt",
                 prompt_name="default",
                 output_path="optimized.txt",
                 batch_size=1,
@@ -78,8 +76,8 @@ class InteractiveBatchHelpersTest(unittest.TestCase):
             final_rows = write_csv_optimization_batches(
                 optimizer=FakeBatchOptimizer(),
                 rows=[
-                    {"scene_id": "1", "storyboard_text": "第一段分镜", "raw_image_prompt": "原始提示词一"},
-                    {"scene_id": "2", "storyboard_text": "第二段分镜", "raw_image_prompt": "原始提示词二"},
+                    {"scene_id": "1", "storyboard_text": "第一段分镜"},
+                    {"scene_id": "2", "storyboard_text": "第二段分镜"},
                 ],
                 prompt_name="default",
                 output_path="optimized.csv",
@@ -110,7 +108,6 @@ class InteractiveBatchHelpersTest(unittest.TestCase):
             final_text = write_txt_video_prompt_batches(
                 generator=FakeBatchGenerator(),
                 storyboard_path="storyboard.txt",
-                optimized_image_prompt_path="optimized_image_prompts.txt",
                 prompt_name="default",
                 output_path="video_prompts.txt",
                 batch_size=1,

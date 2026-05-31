@@ -202,37 +202,6 @@ def scan_output_files(suffix: str, ext: str = ".txt") -> list[str]:
     return files
 
 
-def scan_storyboard_prompt_files(storyboard_path: str) -> list[str]:
-    """扫描与 storyboard.txt 同目录下的青风画面提示词 TXT 文件"""
-    storyboard_dir = os.path.dirname(storyboard_path)
-    if not os.path.isdir(storyboard_dir):
-        return []
-
-    files = []
-    for name in sorted(os.listdir(storyboard_dir)):
-        if not name.endswith(".txt"):
-            continue
-        if not name.startswith("画面提示词"):
-            continue
-        files.append(os.path.join(storyboard_dir, name))
-    return files
-
-
-def scan_storyboard_optimized_image_prompt_files(storyboard_path: str) -> list[str]:
-    """扫描与 storyboard.txt 同目录下的优化后生图提示词 TXT 文件"""
-    storyboard_dir = os.path.dirname(storyboard_path)
-    if not os.path.isdir(storyboard_dir):
-        return []
-
-    files = []
-    for name in sorted(os.listdir(storyboard_dir)):
-        if not name.endswith(".txt"):
-            continue
-        if not name.endswith("_optimized_image_prompts.txt"):
-            continue
-        files.append(os.path.join(storyboard_dir, name))
-    return files
-
 
 def scan_project_files(ext: str, exclude_dirs: set[str] | None = None) -> list[str]:
     """扫描项目内指定扩展名文件，排除虚拟环境等目录"""
@@ -1154,7 +1123,6 @@ def _run_stage_one_pass(
 def run_postprocess_pipeline_for_storyboard(
     bundle: ClientBundle,
     storyboard_path: str,
-    raw_prompt_path: str,
     optimize_prompt_name: str,
     video_prompt_name: str,
     batch_size: int,
@@ -1189,7 +1157,6 @@ def run_postprocess_pipeline_for_storyboard(
     write_txt_optimization_batches(
         optimizer=optimizer,
         storyboard_path=storyboard_path,
-        raw_prompt_path=raw_prompt_path,
         prompt_name=optimize_prompt_name,
         output_path=optimized_path,
         batch_size=batch_size,
@@ -1206,8 +1173,7 @@ def run_postprocess_pipeline_for_storyboard(
             write_txt_optimization_batches(
                 optimizer=optimizer,
                 storyboard_path=storyboard_path,
-                raw_prompt_path=raw_prompt_path,
-                prompt_name=optimize_prompt_name,
+                        prompt_name=optimize_prompt_name,
                 output_path=optimized_path,
                 batch_size=batch_size,
                 console_obj=console,
@@ -1229,7 +1195,6 @@ def run_postprocess_pipeline_for_storyboard(
     write_txt_video_prompt_batches(
         generator=generator,
         storyboard_path=storyboard_path,
-        optimized_image_prompt_path=optimized_path,
         prompt_name=video_prompt_name,
         output_path=video_prompt_path,
         batch_size=batch_size,
@@ -1246,8 +1211,7 @@ def run_postprocess_pipeline_for_storyboard(
             write_txt_video_prompt_batches(
                 generator=generator,
                 storyboard_path=storyboard_path,
-                optimized_image_prompt_path=optimized_path,
-                prompt_name=video_prompt_name,
+                        prompt_name=video_prompt_name,
                 output_path=video_prompt_path,
                 batch_size=batch_size,
                 console_obj=console,
@@ -1304,45 +1268,15 @@ def select_input_file(files: list[str], base_dir: str, label: str) -> str | None
         return selected
 
 
-def select_storyboard_and_raw_prompt_files() -> list[tuple[str, str]]:
-    """Multi-select storyboard files and auto-pair with raw prompt files in same dir."""
+def select_storyboard_files_for_postprocess() -> list[str]:
+    """Multi-select storyboard files for postprocess pipeline."""
     storyboard_files = scan_output_files("_storyboard")
     if not storyboard_files:
         console.print("[red]未找到分镜 TXT 文件，请先执行步骤 3[/]")
         return []
 
-    selected_storyboards = select_storyboard_files(storyboard_files)
-    if not selected_storyboards:
-        return []
-
-    pairs = []
-    for sb_path in selected_storyboards:
-        txt_files = scan_storyboard_prompt_files(sb_path)
-        if len(txt_files) == 0:
-            rel = os.path.relpath(sb_path, Config.OUTPUT_DIR)
-            _print_error(
-                console,
-                f"❌ 自动配对失败: {rel}",
-                '未找到同目录下的“画面提示词*.txt”文件',
-                "已跳过此文件。",
-            )
-            console.print()
-            continue
-        if len(txt_files) > 1:
-            rel = os.path.relpath(sb_path, Config.OUTPUT_DIR)
-            _print_error(
-                console,
-                f"❌ 自动配对失败: {rel}",
-                f'同目录下存在 {len(txt_files)} 个“画面提示词*.txt”文件，无法自动确定配对',
-                "请保留唯一一个画面提示词文件后重试。",
-            )
-            console.print()
-            continue
-        pairs.append((sb_path, txt_files[0]))
-
-    if not pairs:
-        console.print("[red]没有可处理的文件对。[/]")
-    return pairs
+    selected = select_storyboard_files(storyboard_files)
+    return selected
 
 def select_storyboard_input_mode() -> str:
     return _execute_prompt(inquirer.select(
@@ -1353,33 +1287,6 @@ def select_storyboard_input_mode() -> str:
         ],
         default="corrected",
     ))
-
-
-def select_storyboard_and_optimized_prompt_files() -> tuple[str, str] | tuple[None, None]:
-    storyboard_files = scan_output_files("_storyboard")
-    if not storyboard_files:
-        console.print("[red]未找到分镜 TXT 文件，请先执行步骤 3[/]")
-        return None, None
-
-    selected_storyboard = select_input_file(
-        storyboard_files, Config.OUTPUT_DIR, "分镜 TXT"
-    )
-    if not selected_storyboard:
-        return None, None
-
-    txt_files = scan_storyboard_optimized_image_prompt_files(selected_storyboard)
-    if not txt_files:
-        console.print("[red]未找到同目录下的“*_optimized_image_prompts.txt”文件[/]")
-        return None, None
-
-    selected_prompt = select_input_file(
-        txt_files, os.path.dirname(selected_storyboard), "优化后生图提示词 TXT"
-    )
-    if not selected_prompt:
-        return None, None
-
-    return selected_storyboard, selected_prompt
-
 
 def run_single_step():
     """单步执行模式：选择从某一步开始执行"""
@@ -1511,8 +1418,12 @@ def _run_single_step_inner():
         optimization_mode = select_optimization_input_mode()
 
         if optimization_mode == "txt":
-            selected_storyboard, selected_raw_prompt = select_storyboard_and_raw_prompt_files()
-            if not selected_storyboard or not selected_raw_prompt:
+            storyboard_files = scan_output_files("_storyboard")
+            if not storyboard_files:
+                console.print("[red]未找到分镜 TXT 文件，请先执行步骤 3[/]")
+                return
+            selected_storyboard = select_input_file(storyboard_files, Config.OUTPUT_DIR, "分镜 TXT")
+            if not selected_storyboard:
                 return
 
             bundle = get_client()
@@ -1522,7 +1433,7 @@ def _run_single_step_inner():
                 model=bundle.model,
                 prompts_dir=Config.PROMPTS_DIR,
                 thinking_enabled=Config.OPTIMIZE_THINKING,
-            reasoning_effort=Config.OPTIMIZE_REASONING_EFFORT,
+                reasoning_effort=Config.OPTIMIZE_REASONING_EFFORT,
             )
             stem = os.path.basename(os.path.dirname(selected_storyboard))
             out_dir = get_output_dir_for_file(stem)
@@ -1530,7 +1441,6 @@ def _run_single_step_inner():
             result = write_txt_optimization_batches(
                 optimizer=optimizer,
                 storyboard_path=selected_storyboard,
-                raw_prompt_path=selected_raw_prompt,
                 prompt_name=prompt_name,
                 output_path=out_path,
                 batch_size=10,
@@ -1539,8 +1449,12 @@ def _run_single_step_inner():
             console.print(f"[green]✓ 优化后提示词: {out_path}[/]")
             preview_file_content(out_path)
         else:
-            selected_storyboard, selected_raw_prompt = select_storyboard_and_raw_prompt_files()
-            if not selected_storyboard or not selected_raw_prompt:
+            storyboard_files = scan_output_files("_storyboard")
+            if not storyboard_files:
+                console.print("[red]未找到分镜 TXT 文件，请先执行步骤 3[/]")
+                return
+            selected_storyboard = select_input_file(storyboard_files, Config.OUTPUT_DIR, "分镜 TXT")
+            if not selected_storyboard:
                 return
 
             bundle = get_client()
@@ -1550,18 +1464,15 @@ def _run_single_step_inner():
                 model=bundle.model,
                 prompts_dir=Config.PROMPTS_DIR,
                 thinking_enabled=Config.OPTIMIZE_THINKING,
-            reasoning_effort=Config.OPTIMIZE_REASONING_EFFORT,
+                reasoning_effort=Config.OPTIMIZE_REASONING_EFFORT,
             )
             stem = os.path.basename(os.path.dirname(selected_storyboard))
             out_dir = get_output_dir_for_file(stem)
             out_path = os.path.join(out_dir, f"{stem}_optimized_image_prompts.csv")
-            merged_rows = optimizer.build_rows_from_files(
-                storyboard_path=selected_storyboard,
-                raw_prompt_path=selected_raw_prompt,
-            )
+            rows = optimizer.build_rows_from_files(storyboard_path=selected_storyboard)
             result = write_csv_optimization_batches(
                 optimizer=optimizer,
-                rows=merged_rows,
+                rows=rows,
                 prompt_name=prompt_name,
                 output_path=out_path,
                 batch_size=10,
@@ -1573,13 +1484,17 @@ def _run_single_step_inner():
     elif step == 5:
         generation_mode = select_optimization_input_mode(
             workflow_label="视频提示词生成",
-            txt_label="storyboard.txt + *_optimized_image_prompts.txt",
-            csv_label="storyboard_table.csv + optimized_image_prompt_table.csv",
+            txt_label="storyboard.txt → video_prompts.txt",
+            csv_label="storyboard.txt → video_prompts.csv",
         )
 
         if generation_mode == "txt":
-            selected_storyboard, selected_prompt = select_storyboard_and_optimized_prompt_files()
-            if not selected_storyboard or not selected_prompt:
+            storyboard_files = scan_output_files("_storyboard")
+            if not storyboard_files:
+                console.print("[red]未找到分镜 TXT 文件，请先执行步骤 3[/]")
+                return
+            selected_storyboard = select_input_file(storyboard_files, Config.OUTPUT_DIR, "分镜 TXT")
+            if not selected_storyboard:
                 return
 
             bundle = get_client()
@@ -1589,7 +1504,7 @@ def _run_single_step_inner():
                 model=bundle.model,
                 prompts_dir=Config.PROMPTS_DIR,
                 thinking_enabled=Config.VIDEO_THINKING,
-            reasoning_effort=Config.VIDEO_REASONING_EFFORT,
+                reasoning_effort=Config.VIDEO_REASONING_EFFORT,
             )
             stem = os.path.basename(os.path.dirname(selected_storyboard))
             out_dir = get_output_dir_for_file(stem)
@@ -1597,7 +1512,6 @@ def _run_single_step_inner():
             result = write_txt_video_prompt_batches(
                 generator=generator,
                 storyboard_path=selected_storyboard,
-                optimized_image_prompt_path=selected_prompt,
                 prompt_name=prompt_name,
                 output_path=out_path,
                 batch_size=10,
@@ -1606,8 +1520,12 @@ def _run_single_step_inner():
             console.print(f"[green]✓ 视频提示词: {out_path}[/]")
             preview_file_content(out_path)
         else:
-            selected_storyboard, selected_prompt = select_storyboard_and_optimized_prompt_files()
-            if not selected_storyboard or not selected_prompt:
+            storyboard_files = scan_output_files("_storyboard")
+            if not storyboard_files:
+                console.print("[red]未找到分镜 TXT 文件，请先执行步骤 3[/]")
+                return
+            selected_storyboard = select_input_file(storyboard_files, Config.OUTPUT_DIR, "分镜 TXT")
+            if not selected_storyboard:
                 return
 
             bundle = get_client()
@@ -1617,18 +1535,15 @@ def _run_single_step_inner():
                 model=bundle.model,
                 prompts_dir=Config.PROMPTS_DIR,
                 thinking_enabled=Config.VIDEO_THINKING,
-            reasoning_effort=Config.VIDEO_REASONING_EFFORT,
+                reasoning_effort=Config.VIDEO_REASONING_EFFORT,
             )
             stem = os.path.basename(os.path.dirname(selected_storyboard))
             out_dir = get_output_dir_for_file(stem)
             out_path = os.path.join(out_dir, f"{stem}_video_prompts.csv")
-            merged_rows = generator.build_rows_from_files(
-                storyboard_path=selected_storyboard,
-                optimized_image_prompt_path=selected_prompt,
-            )
+            rows = generator.build_rows_from_files(storyboard_path=selected_storyboard)
             result = write_csv_video_prompt_batches(
                 generator=generator,
-                rows=merged_rows,
+                rows=rows,
                 prompt_name=prompt_name,
                 output_path=out_path,
                 batch_size=10,
@@ -1960,9 +1875,9 @@ def _run_postprocess_pipeline_inner():
     console.print("[bold cyan]🔍 环境检查[/]")
     bundle = get_client()
 
-    console.print("[bold cyan]📂 步骤 4: 选择分镜与原始画面提示词文件[/]")
-    pairs = select_storyboard_and_raw_prompt_files()
-    if not pairs:
+    console.print("[bold cyan]📂 步骤 4: 选择分镜文件[/]")
+    storyboard_paths = select_storyboard_files_for_postprocess()
+    if not storyboard_paths:
         return
 
     console.print("[bold cyan]📝 步骤 5: 选择系统提示词模板[/]")
@@ -1981,7 +1896,7 @@ def _run_postprocess_pipeline_inner():
     else:
         console.print("[yellow]✓ 交互模式，每步完成后可预览/编辑/重新生成[/]\n")
 
-    total = len(pairs)
+    total = len(storyboard_paths)
     console.print(Panel(
         f"[bold]共 {total} 个分镜文件待处理[/]",
         title="✨ 开始后处理",
@@ -1991,14 +1906,13 @@ def _run_postprocess_pipeline_inner():
 
     all_results: list[tuple[str, list[tuple[str, str]]]] = []
 
-    for i, (storyboard_path, raw_prompt_path) in enumerate(pairs, start=1):
+    for i, storyboard_path in enumerate(storyboard_paths, start=1):
         stem = os.path.basename(os.path.dirname(storyboard_path))
         try:
             results = run_postprocess_pipeline_for_storyboard(
                 bundle=bundle,
                 storyboard_path=storyboard_path,
-                raw_prompt_path=raw_prompt_path,
-                optimize_prompt_name=optimize_prompt_name,
+                        optimize_prompt_name=optimize_prompt_name,
                 video_prompt_name=video_prompt_name,
                 batch_size=10,
                 unattended=unattended,

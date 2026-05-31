@@ -151,12 +151,9 @@ class MainPipelineCliTest(unittest.TestCase):
                 file.write("VIDEO")
 
             storyboard_path = os.path.join(storyboard_dir, "demo_storyboard.txt")
-            raw_prompt_path = os.path.join(storyboard_dir, "画面提示词_2026-4-17.txt")
 
             with open(storyboard_path, "w", encoding="utf-8") as file:
                 file.write("1. 第一段分镜\n2. 第二段分镜\n")
-            with open(raw_prompt_path, "w", encoding="utf-8") as file:
-                file.write("原始提示词一\n原始提示词二\n")
 
             runner = CliRunner()
             fake_bundle = SimpleNamespace(
@@ -174,8 +171,6 @@ class MainPipelineCliTest(unittest.TestCase):
                         "continue-run",
                         "--storyboard",
                         storyboard_path,
-                        "--raw-prompts",
-                        raw_prompt_path,
                         "--output-dir",
                         output_dir,
                         "--batch-size",

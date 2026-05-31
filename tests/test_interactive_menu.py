@@ -23,8 +23,6 @@ from core.interactive import (
     select_optimization_input_mode,
     select_prompt,
     select_storyboard_input_mode,
-    scan_storyboard_optimized_image_prompt_files,
-    scan_storyboard_prompt_files,
 )
 from rich.console import Console
 
@@ -156,66 +154,6 @@ class InteractiveMenuTest(unittest.TestCase):
         print_error.assert_called_once()
         self.assertEqual("❌ 阶段二执行失败", print_error.call_args.args[1])
         self.assertEqual("阶段二失败", print_error.call_args.args[2])
-
-    def test_scan_storyboard_prompt_files_only_returns_same_directory_qingfeng_txt_files(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            target_dir = os.path.join(tmp_dir, "示例剧集")
-            other_dir = os.path.join(tmp_dir, "其他剧集")
-            os.makedirs(target_dir)
-            os.makedirs(other_dir)
-
-            storyboard_path = os.path.join(target_dir, "示例_storyboard.txt")
-            with open(storyboard_path, "w", encoding="utf-8") as file:
-                file.write("1. 分镜")
-
-            expected_prompt = os.path.join(target_dir, "画面提示词.txt")
-            another_expected_prompt = os.path.join(target_dir, "画面提示词_2026-4-14.txt")
-            ignored_same_dir = os.path.join(target_dir, "别的提示词.txt")
-            ignored_other_dir = os.path.join(other_dir, "画面提示词.txt")
-
-            for path in [
-                expected_prompt,
-                another_expected_prompt,
-                ignored_same_dir,
-                ignored_other_dir,
-            ]:
-                with open(path, "w", encoding="utf-8") as file:
-                    file.write("提示词")
-
-            self.assertEqual(
-                [expected_prompt, another_expected_prompt],
-                scan_storyboard_prompt_files(storyboard_path),
-            )
-
-    def test_scan_storyboard_optimized_prompt_files_only_returns_same_directory_optimized_txt_files(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            target_dir = os.path.join(tmp_dir, "示例剧集")
-            other_dir = os.path.join(tmp_dir, "其他剧集")
-            os.makedirs(target_dir)
-            os.makedirs(other_dir)
-
-            storyboard_path = os.path.join(target_dir, "示例_storyboard.txt")
-            with open(storyboard_path, "w", encoding="utf-8") as file:
-                file.write("1. 分镜")
-
-            expected_prompt = os.path.join(target_dir, "示例_optimized_image_prompts.txt")
-            another_expected_prompt = os.path.join(target_dir, "别名_optimized_image_prompts.txt")
-            ignored_same_dir = os.path.join(target_dir, "画面提示词.txt")
-            ignored_other_dir = os.path.join(other_dir, "示例_optimized_image_prompts.txt")
-
-            for path in [
-                expected_prompt,
-                another_expected_prompt,
-                ignored_same_dir,
-                ignored_other_dir,
-            ]:
-                with open(path, "w", encoding="utf-8") as file:
-                    file.write("提示词")
-
-            self.assertEqual(
-                [another_expected_prompt, expected_prompt],
-                scan_storyboard_optimized_image_prompt_files(storyboard_path),
-            )
 
     def test_scan_input_txt_files_recursively_returns_only_txt_files(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
